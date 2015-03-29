@@ -1,0 +1,14 @@
+{
+    "version": "0.0.1",
+    "summary": "Frontend for Flashdance reservation system",
+    "repository": "https://github.com/timhabermaas/flashdance-frontend.git",
+    "license": "BSD3",
+    "source-directories": [
+        "."
+    ],
+    "exposed-modules": [],
+    "dependencies": {
+        "elm-lang/core": "1.1.1 <= v < 2.0.0",
+        "evancz/elm-html": "2.0.0 <= v < 3.0.0"
+    }
+}
