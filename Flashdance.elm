@@ -41,8 +41,14 @@ update action model =
     ClickSeat seat -> { model | seats <- updateStand (ClickSeat seat) model.seats }
     NoOp -> model
 
+row : Int -> List Seat -> List Seat
+row n = List.map (\s -> { s | row <- n, pos <- (fst s.pos, (snd s.pos) + n) })
+
+buildSeat : Int -> Seat
+buildSeat n = {pos = (n,0), row = 16, number = n, selected = Unselected, state = Free}
+
 dummyStand : Stand
-dummyStand = [{pos = (0,0), row = 14, number = 1, selected = Unselected, state = Free}, {pos = (1,0), row = 14, number = 2, selected = Unselected, state = Free}]
+dummyStand = List.foldl (\c acc -> acc ++ (row c <| List.map buildSeat [0..19])) [] [1..18]
 
 view : Model -> Html
 view model =
@@ -78,7 +84,7 @@ drawSeat seat = move (scaleTuple seat.pos 21) <|
 
 
 drawStand : Stand -> Element
-drawStand stand = collage 400 400 <| List.map drawSeat stand
+drawStand stand = collage 1000 400 <| List.map drawSeat stand
 
 main : Signal Html
 main =
