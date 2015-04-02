@@ -5,12 +5,26 @@
   <meta charset="UTF-8">
   <title>Flashdance Tickets</title>
   <script type="text/javascript" src="elm.js"></script>
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.3.min.js"></script>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 </head>
 
 <body>
 </body>
 <script>
-Elm.fullscreen(Elm.Flashdance);
+var flashdance = Elm.fullscreen(Elm.Flashdance, {
+  // This doesn't seem to be some default, it's just here to
+  // make sure the types between Elm and JS line up.
+  asyncResponses: {title: '', description: ''}
+});
+
+flashdance.ports.requests.subscribe(function (request) {
+  $.getJSON("https://api.github.com/search/issues?q=" + request, {
+    format: "json"
+  }).done(function(data) {
+    flashdance.ports.asyncResponses.send(data.items[0]);
+  });
+})
+
 </script>
 </html>
