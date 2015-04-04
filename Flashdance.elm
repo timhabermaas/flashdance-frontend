@@ -15,32 +15,24 @@ import Color (..)
 import Maybe
 import Time
 import String
+import Dict as D
+import Model as M
 
-type alias Model = { title : String, counter : Int, seats : Stand }
-
-type Action = NoOp | CountUp | CountDown | ClickSeat Seat | SetTitle String
+type Action = NoOp | CountUp | CountDown | ClickSeat (Int,Int) | SetTitle String
 type Effect = AjaxRequest String
 
-type SeatState = Reserved | Unusable | Free
-type Selected = Selected | Unselected
-
-type alias Seat = { x: Int, number: Int, selected: Selected, state: SeatState }
-type alias Row = { number: Int, y: Int, seats: List Seat }
-type alias Stand = List Row
 
 
-toggleSelected : Seat -> Seat
-toggleSelected s = case s.selected of
-  Selected -> { s | selected <- Unselected }
-  Unselected -> { s | selected <- Selected }
+markSeatInSeats : Int -> List M.Seat -> List M.Seat
+markSeatInSeats number seats = List.map (\s -> if s.number == number then M.toggleSelected s else s ) seats
 
-updateStand : Action -> Stand -> Stand
+updateStand : Action -> M.Stand -> M.Stand
 updateStand action stand =
   case action of
-    ClickSeat seat -> stand
+    ClickSeat (row, number) -> D.update row (\row -> Maybe.andThen row (\row -> Just { row | seats <- markSeatInSeats number row.seats })) stand
     _ -> stand
 
-update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
+update : Action -> (M.Model, Maybe Effect) -> (M.Model, Maybe Effect)
 update action (model, _) =
   case action of
     CountUp -> ({ model | counter <- model.counter + 1 }, Nothing)
@@ -68,13 +60,8 @@ toRequest e = case e of
 fooRequest : Signal String
 fooRequest = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf String.isEmpty ""
 
-dummyRow : List Seat
-dummyRow = List.map (\n -> {x = n, number = n, selected = Unselected, state = Free}) [1..100]
 
-dummyStand : Stand
-dummyStand = List.map (\n -> { number = 17 - n, y = n, seats = dummyRow }) [1..30]
-
-view : Model -> H.Html
+view : M.Model -> H.Html
 view model =
     H.div []
       [ drawStand model.seats
@@ -86,12 +73,6 @@ scaleTuple : (Int,Int) -> Float -> (Float,Float)
 scaleTuple (x,y) s = ((toFloat x) * s, (toFloat y) * s)
 
 
-seatShape : Seat -> (Shape -> Form)
-seatShape s = case s.state of
-  Reserved -> outlined (solid black)
-  Unusable -> outlined (solid black)
-  Free -> if (s.selected == Selected) then outlined (solid red) else outlined (solid black)
-
 
 main : Signal H.Html
 main =
@@ -100,15 +81,15 @@ main =
 input : Signal Action
 input = Signal.merge (Signal.map responseToAction asyncResponses) (Signal.subscribe actionChannel)
 
-updatesWithEffect : Signal (Model, Maybe Effect)
+updatesWithEffect : Signal (M.Model, Maybe Effect)
 updatesWithEffect =
-  Signal.foldp update ({title = "", counter = 0, seats = dummyStand}, Nothing) input
+  Signal.foldp update ({title = "", counter = 0, seats = M.dummyStand}, Nothing) input
 
 
-toModel : (Model, Maybe Effect) -> Model
+toModel : (M.Model, Maybe Effect) -> M.Model
 toModel (m, _) = m
 
-model : Signal Model
+model : Signal M.Model
 model =
   Signal.map toModel updatesWithEffect
 
@@ -119,14 +100,18 @@ actionChannel =
 
 -- SVG FOO
 
-drawSeat : Seat -> S.Svg
-drawSeat seat = S.g [HE.onClick (Signal.send actionChannel CountUp), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
-                  [ S.rect [SA.style "fill:rgba(0,0,0,0);stroke-width: 1; stroke: rgb(0, 0, 0)", SA.width "18", SA.height "18"] []
+seatColor : M.Seat -> String
+seatColor s =
+  if M.isSelected s then "#f00" else "rgba(0,0,0,0)"
+
+drawSeat : Int -> M.Seat -> S.Svg
+drawSeat rowNumber seat = S.g [HE.onClick (Signal.send actionChannel (ClickSeat (17 - rowNumber, seat.number))), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
+                  [ S.rect [SA.style <| "fill:" ++ (seatColor seat) ++ "; stroke-width: 1; stroke: rgb(0, 0, 0)", SA.width "18", SA.height "18"] []
                   , S.text [SA.x "9", SA.y "14", SA.textAnchor "middle"] [ H.text <| toString seat.number]
                   ]
 
-drawRow : Row -> S.Svg
-drawRow row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 18) ++ ")"] (List.map drawSeat row.seats)
+drawRow : M.Row -> S.Svg
+drawRow row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 18) ++ ")"] (List.map (drawSeat row.number) row.seats)
 
-drawStand : Stand -> H.Html
-drawStand stand = S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "500", SA.width "1000"] <| List.map drawRow stand
+drawStand : M.Stand -> H.Html
+drawStand stand = S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "500", SA.width "1000"] <| List.map drawRow (D.values stand)
