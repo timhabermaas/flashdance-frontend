@@ -1,30 +1,42 @@
-module Model (Model, Stand, Seat, Row, isSelected, toggleSelected, dummyStand) where
+module Model (Model, Stand, Seat, Row, rows, seatsInRow, initialModel, isSelected, toggleSelected) where
 import Dict as D
 import List as L
 
 type SeatState = Reserved | Unusable | Free
-type Selected = Selected | Unselected
+
+type alias RowNumber = Int
+type alias SeatNumber = Int
+type alias SeatId = (RowNumber, SeatNumber)
+
 
 type alias Row = { number: Int, y: Int, seats: List Seat }
 type alias Stand = D.Dict Int Row
-type alias Seat = { x: Int, number: Int, selected: Selected, state: SeatState }
+type alias Seat = { seatId : SeatId, x: Int, number: Int, row: Int, state: SeatState }
 
-type alias Model = { title : String, counter : Int, seats : Stand }
+type alias Model = { title : String, counter : Int, seats : Stand, selections : List Seat }
 
-toggleSelected : Seat -> Seat
-toggleSelected s = case s.selected of
-  Selected -> { s | selected <- Unselected }
-  Unselected -> { s | selected <- Selected }
 
-dummyRow : List Seat
-dummyRow = L.map (\n -> {x = n, number = n, selected = Unselected, state = Free}) [1..40]
+toggleSelected : Model -> Seat -> Model
+toggleSelected model seat = if | isSelected model seat -> { model | selections <- L.filter ((/=) seat) model.selections }
+                               | otherwise -> { model | selections <- seat :: model.selections }
+
+dummyRow : Int -> List Seat
+dummyRow row = L.map (\n -> {seatId = (row, n), x = n, number = n, row = row, state = Free}) [1..48]
 
 dummyStand : Stand
-dummyStand = L.foldl (\n map -> D.insert n {number = 17 - n, y = n, seats = dummyRow } map) D.empty [1..100]
+dummyStand = L.foldl (\n map -> D.insert (16 - n) {number = 16 - n, y = n, seats = dummyRow n } map) D.empty [1..16]
 
-isSelected : Seat -> Bool
-isSelected s = case s.selected of
-  Selected -> True
-  Unselected -> False
+initialModel : Model
+initialModel = {selections = [], title = "", counter = 0, seats = dummyStand}
 
---selectSeat : Model -> Seat -> Model
+isSelected : Model -> Seat -> Bool
+isSelected m s = L.member s m.selections
+
+rows : Model -> List Row
+rows model = D.values model.seats
+
+seatsInRow : Model -> Row -> List Seat
+seatsInRow model row =
+  case D.get row.number model.seats of
+    Nothing -> []
+    Just row -> row.seats
