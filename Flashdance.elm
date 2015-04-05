@@ -17,7 +17,7 @@ import Time
 import String
 import Model as M
 
-type Action = NoOp | CountUp | CountDown | ClickSeat M.Seat | SetTitle String
+type Action = NoOp | CountUp | CountDown | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | SetTitle String
 type Effect = AjaxRequest String
 
 
@@ -30,17 +30,20 @@ update action (model, _) =
     CountDown -> ({ model | counter <- model.counter - 1 }, Just <| AjaxRequest <| toString (model.counter - 1))
     ClickSeat seat -> (M.toggleSelected model seat, Nothing)
     SetTitle title -> ({ model | title <- title }, Nothing)
+    UpdateSeats (seats, _) -> (M.updateSeats model seats, Nothing)
     NoOp -> (model, Nothing)
 
 port requests : Signal String
 port requests = fooRequest
 
 type alias GithubResponse = { title : String }
+type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 
 port asyncResponses : Signal GithubResponse
+port seatsReceived : Signal SeatsResponse
 
-responseToAction : GithubResponse -> Action
-responseToAction r = SetTitle r.title
+responseToAction : SeatsResponse -> Action
+responseToAction r = UpdateSeats (r.seats, r.rows)
 
 
 toRequest : Maybe Effect -> String
@@ -54,10 +57,19 @@ fooRequest = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf St
 
 view : M.Model -> H.Html
 view model =
-    H.div []
-      [ drawStand model
-      , H.text <| toString model.counter
-      , H.button [ HE.onClick (Signal.send actionChannel CountDown) ] [H.text "fo"]
+    H.div [HA.class "container"]
+      [ H.div [HA.class "row"]
+        [ H.div [HA.class "col-md-12"]
+          [ H.h1 [] [H.text "Gig"] ]
+        ]
+      , H.div [HA.class "row"]
+        [ H.div [HA.class "col-md-12"]
+          [ drawStand model
+          , H.text <| toString model.counter
+          , H.text <| M.selectionsAsText model
+          , H.button [ HE.onClick (Signal.send actionChannel CountDown) ] [H.text "fo"]
+          ]
+        ]
       ]
 
 
@@ -66,7 +78,7 @@ main =
   Signal.map view model
 
 input : Signal Action
-input = Signal.merge (Signal.map responseToAction asyncResponses) (Signal.subscribe actionChannel)
+input = Signal.merge (Signal.map responseToAction seatsReceived) (Signal.subscribe actionChannel)
 
 updatesWithEffect : Signal (M.Model, Maybe Effect)
 updatesWithEffect =
@@ -92,10 +104,13 @@ seatColor model seat =
   if M.isSelected model seat then "#f00" else "rgba(0,0,0,0)"
 
 drawSeat : M.Model -> Int -> M.Seat -> S.Svg
-drawSeat model rowNumber seat = S.g [HE.onClick (Signal.send actionChannel (ClickSeat seat)), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
-                  [ S.rect [SA.cursor "pointer", SA.style <| "fill:" ++ (seatColor model seat) ++ "; stroke-width: 1; stroke: rgb(0, 0, 0)", SA.width "18", SA.height "18"] []
-                  , S.text [SA.x "9", SA.y "13", SA.cursor "pointer", SA.textAnchor "middle", SA.fontSize "11"] [ H.text <| toString seat.number]
-                  ]
+drawSeat model rowNumber seat =
+  let text = if M.isUsable seat then toString seat.number else ""
+  in
+    S.g [HE.onClick (Signal.send actionChannel (ClickSeat seat)), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
+      [ S.rect [SA.cursor "pointer", SA.style <| "fill:" ++ (seatColor model seat) ++ "; stroke-width: 1; stroke: rgb(0, 0, 0)", SA.width "18", SA.height "18"] []
+      , S.text [SA.x "9", SA.y "13", SA.cursor "pointer", SA.textAnchor "middle", SA.fontSize "11"] [ H.text text]
+      ]
 
 drawRow : M.Model -> M.Row -> S.Svg
 drawRow model row = S.g [SA.transform <| "translate(0," ++ (toString <| (row.y - 1) * 25) ++ ")"]

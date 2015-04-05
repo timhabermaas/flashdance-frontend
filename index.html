@@ -15,16 +15,22 @@
 var flashdance = Elm.fullscreen(Elm.Flashdance, {
   // This doesn't seem to be some default, it's just here to
   // make sure the types between Elm and JS line up.
-  asyncResponses: {title: '', description: ''}
+  asyncResponses: {title: '', description: ''},
+  seatsReceived: {seats: [], rows: []}
 });
 
-flashdance.ports.requests.subscribe(function (request) {
-  $.getJSON("https://api.github.com/search/issues?q=" + request, {
+function catchSeats(gig_id) {
+  $.getJSON("http://localhost:9292/gigs/" + gig_id + "/seats", {
     format: "json"
   }).done(function(data) {
-    flashdance.ports.asyncResponses.send(data.items[0]);
+    console.log(data);
+    flashdance.ports.seatsReceived.send(data);
   });
-})
+}
+
+flashdance.ports.requests.subscribe(catchSeats);
+
+setTimeout(function() { catchSeats(2); }, 1);
 
 </script>
 </html>
