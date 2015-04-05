@@ -1,18 +1,15 @@
-module Model (Model, Stand, Seat, Row, selectionsAsText, isUsable, updateSeats, rows, seatsInRow, initialModel, isSelected, toggleSelected) where
+module Model (Model, Seat, Row, selectionsAsText, isUsable, updateSeats, rows, seatsInRow, initialModel, isSelected, toggleSelected) where
 import Dict as D
 import List as L
 import String as S
-
-type SeatState = Reserved | Unusable | Free
 
 type alias SeatId = Int
 
 
 type alias Row = { number: Int, y: Int }
-type alias Stand = D.Dict Int Row
 type alias Seat = { id : SeatId, x: Int, number: Int, row: Int, usable: Bool }
 
-type alias Model = { title : String, counter : Int, seats : List Seat, rows: List Row, selections : List Seat }
+type alias Model = { seats : List Seat, rows: List Row, selections : List Seat }
 
 
 toggleSelected : Model -> Seat -> Model
@@ -32,7 +29,7 @@ dummyRows : List Row
 dummyRows = L.map (\n -> {number = 17 - n, y = n}) [1..16]
 
 initialModel : Model
-initialModel = {selections = [], title = "", counter = 0, rows = dummyRows, seats = dummyStand}
+initialModel = {selections = [], rows = dummyRows, seats = dummyStand}
 
 isSelected : Model -> Seat -> Bool
 isSelected m s = L.member s m.selections

@@ -17,7 +17,7 @@ import Time
 import String
 import Model as M
 
-type Action = NoOp | CountUp | CountDown | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | SetTitle String
+type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row)
 type Effect = AjaxRequest String
 
 
@@ -26,20 +26,15 @@ type Effect = AjaxRequest String
 update : Action -> (M.Model, Maybe Effect) -> (M.Model, Maybe Effect)
 update action (model, _) =
   case action of
-    CountUp -> ({ model | counter <- model.counter + 1 }, Nothing)
-    CountDown -> ({ model | counter <- model.counter - 1 }, Just <| AjaxRequest <| toString (model.counter - 1))
     ClickSeat seat -> (M.toggleSelected model seat, Nothing)
-    SetTitle title -> ({ model | title <- title }, Nothing)
     UpdateSeats (seats, _) -> (M.updateSeats model seats, Nothing)
     NoOp -> (model, Nothing)
 
 port requests : Signal String
 port requests = fooRequest
 
-type alias GithubResponse = { title : String }
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 
-port asyncResponses : Signal GithubResponse
 port seatsReceived : Signal SeatsResponse
 
 responseToAction : SeatsResponse -> Action
@@ -65,9 +60,7 @@ view model =
       , H.div [HA.class "row"]
         [ H.div [HA.class "col-md-12"]
           [ drawStand model
-          , H.text <| toString model.counter
           , H.text <| M.selectionsAsText model
-          , H.button [ HE.onClick (Signal.send actionChannel CountDown) ] [H.text "fo"]
           ]
         ]
       ]
@@ -84,17 +77,13 @@ updatesWithEffect : Signal (M.Model, Maybe Effect)
 updatesWithEffect =
   Signal.foldp update (M.initialModel, Nothing) input
 
-
-justModel : (M.Model, Maybe Effect) -> M.Model
-justModel (m, _) = m
-
 model : Signal M.Model
 model =
-  Signal.map justModel updatesWithEffect
+  Signal.map fst updatesWithEffect
 
 actionChannel : Signal.Channel Action
 actionChannel =
-  Signal.channel CountUp
+  Signal.channel NoOp
 
 
 -- SVG FOO
