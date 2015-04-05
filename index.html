@@ -20,7 +20,7 @@ var flashdance = Elm.fullscreen(Elm.Flashdance, {
 });
 
 function catchSeats(gig_id) {
-  $.getJSON("http://localhost:9292/gigs/" + gig_id + "/seats", {
+  $.getJSON("https://tickets-backend-ruby.herokuapp.com/gigs/" + gig_id + "/seats", {
     format: "json"
   }).done(function(data) {
     console.log(data);
