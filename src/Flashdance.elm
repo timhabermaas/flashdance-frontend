@@ -52,18 +52,18 @@ fooRequest = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf St
 
 view : M.Model -> H.Html
 view model =
-    H.div [HA.class "container"]
-      [ H.div [HA.class "row"]
-        [ H.div [HA.class "col-md-12"]
-          [ H.h1 [] [H.text "Gig"] ]
-        ]
-      , H.div [HA.class "row"]
-        [ H.div [HA.class "col-md-12"]
-          [ drawStand model
-          , H.text <| M.selectionsAsText model
-          ]
+  H.div [HA.class "container"]
+    [ H.div [HA.class "row"]
+      [ H.div [HA.class "col-md-12"]
+        [ H.h1 [] [H.text "Gig"] ]
+      ]
+    , H.div [HA.class "row"]
+      [ H.div [HA.class "col-md-12"]
+        [ drawStand model
+        , H.text <| M.selectionsAsText model
         ]
       ]
+    ]
 
 
 main : Signal H.Html

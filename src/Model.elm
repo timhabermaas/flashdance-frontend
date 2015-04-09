@@ -3,7 +3,7 @@ import Dict as D
 import List as L
 import String as S
 
-type alias SeatId = Int
+type alias SeatId = String
 
 
 type alias Row = { number: Int, y: Int }
@@ -20,7 +20,7 @@ toggleSelected model seat =
     False -> model
 
 dummyRow : Int -> List Seat
-dummyRow row = L.map (\n -> {id = row * n, x = n, number = n, row = row, usable = True}) [1..48]
+dummyRow row = L.map (\n -> {id = (toString <| row * n), x = n, number = n, row = row, usable = True}) [1..48]
 
 dummyStand : List Seat
 dummyStand = L.concat <| L.map dummyRow [1..16]

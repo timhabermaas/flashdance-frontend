@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <title>Flashdance Tickets</title>
   <script type="text/javascript" src="elm.js"></script>
-  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.3.min.js"></script>
+  <script type="text/javascript" src="jquery-1.11.2.js"></script>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 </head>
 
@@ -29,7 +29,7 @@ function catchSeats(gig_id) {
 
 flashdance.ports.requests.subscribe(catchSeats);
 
-setTimeout(function() { catchSeats(2); }, 1);
+setTimeout(function() { catchSeats("db39dcd3-a60e-464b-9c04-891dceca7183"); }, 1);
 
 </script>
 </html>
