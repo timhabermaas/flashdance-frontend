@@ -15,13 +15,25 @@
 var flashdance = Elm.fullscreen(Elm.Flashdance, {
   // This doesn't seem to be some default, it's just here to
   // make sure the types between Elm and JS line up.
-  seatsReceived: {seats: [], rows: []}
+  seatsReceived: {seats: [], rows: []},
+  gigsReceived: []
 });
 
-function catchSeats(gig_id) {
-  $.getJSON("https://tickets-backend-ruby.herokuapp.com/gigs/" + gig_id + "/seats", {
+function makeRequest(path) {
+  return $.getJSON("https://tickets-backend-ruby.herokuapp.com" + path, {
     format: "json"
-  }).done(function(data) {
+  });
+}
+
+function catchGigs() {
+  makeRequest("/gigs").done(function(data) {
+    console.log(data);
+    flashdance.ports.gigsReceived.send(data);
+  });
+}
+
+function catchSeats(gig_id) {
+  makeRequest("/gigs/" + gig_id + "/seats").done(function(data) {
     console.log(data);
     flashdance.ports.seatsReceived.send(data);
   });
@@ -29,7 +41,7 @@ function catchSeats(gig_id) {
 
 flashdance.ports.requests.subscribe(catchSeats);
 
-setTimeout(function() { catchSeats("db39dcd3-a60e-464b-9c04-891dceca7183"); }, 1);
+setTimeout(function() { catchGigs(); }, 1);
 
 </script>
 </html>

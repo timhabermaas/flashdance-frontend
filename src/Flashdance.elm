@@ -17,53 +17,86 @@ import Time
 import String
 import Model as M
 
-type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row)
-type Effect = AjaxRequest String
+type alias GigId = String
+type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | GigsReceived (List Gig) | ClickGig Gig
+type Effect = FetchSeats GigId
 
 
+type CurrentPage = GigIndex | GigView Gig
+type alias Model = { stand: M.Model, gigs: List Gig, page: CurrentPage }
+
+initialModel : Model
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel }
 
 
-update : Action -> (M.Model, Maybe Effect) -> (M.Model, Maybe Effect)
+update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
-    ClickSeat seat -> (M.toggleSelected model seat, Nothing)
-    UpdateSeats (seats, _) -> (M.updateSeats model seats, Nothing)
+    ClickSeat seat -> ({ model | stand <- M.toggleSelected model.stand seat}, Nothing)
+    UpdateSeats (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
+    GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
+    ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
     NoOp -> (model, Nothing)
 
 port requests : Signal String
 port requests = fooRequest
 
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
+type alias Gig = { id: GigId, date: String, title: String }
+type alias GigsResponse = List Gig
 
 port seatsReceived : Signal SeatsResponse
+port gigsReceived : Signal GigsResponse
 
 responseToAction : SeatsResponse -> Action
 responseToAction r = UpdateSeats (r.seats, r.rows)
 
+responseToAction2 : GigsResponse -> Action
+responseToAction2 r = GigsReceived r
 
-toRequest : Maybe Effect -> String
+
+toRequest : Maybe Effect -> GigId
 toRequest e = case e of
-  (Just (AjaxRequest s)) -> s
+  (Just (FetchSeats s)) -> s
   Nothing -> ""
 
 fooRequest : Signal String
 fooRequest = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf String.isEmpty ""
 
-
-view : M.Model -> H.Html
-view model =
-  H.div [HA.class "container"]
-    [ H.div [HA.class "row"]
-      [ H.div [HA.class "col-md-12"]
-        [ H.h1 [] [H.text "Gig"] ]
-      ]
-    , H.div [HA.class "row"]
-      [ H.div [HA.class "col-md-12"]
-        [ drawStand model
-        , H.text <| M.selectionsAsText model
-        ]
+drawGigEntry : Gig -> H.Html
+drawGigEntry gig =
+  H.li []
+    [ H.a [HA.href "#", HE.onClick (Signal.send actionChannel (ClickGig gig))]
+      [ H.text gig.title
+      , H.span [HA.class "badge"] [H.text "2 freie Plätze"]
       ]
     ]
+
+view : Model -> H.Html
+view model =
+  case model.page of
+    GigIndex ->
+      H.div [HA.class "container"]
+        [ H.div [HA.class "row"]
+          [ H.div [HA.class "col-md-12"]
+            [ H.h1 [] [H.text "Aufführungen"]
+            , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map drawGigEntry model.gigs)
+            ]
+          ]
+        ]
+    GigView _ ->
+      H.div [HA.class "container"]
+        [ H.div [HA.class "row"]
+          [ H.div [HA.class "col-md-12"]
+            [ H.h1 [] [H.text "Gig"] ]
+          ]
+        , H.div [HA.class "row"]
+          [ H.div [HA.class "col-md-12"]
+            [ drawStand model.stand
+            , H.text <| M.selectionsAsText model.stand
+            ]
+          ]
+        ]
 
 
 main : Signal H.Html
@@ -71,13 +104,13 @@ main =
   Signal.map view model
 
 input : Signal Action
-input = Signal.merge (Signal.map responseToAction seatsReceived) (Signal.subscribe actionChannel)
+input = Signal.mergeMany [(Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), (Signal.subscribe actionChannel)]
 
-updatesWithEffect : Signal (M.Model, Maybe Effect)
+updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
-  Signal.foldp update (M.initialModel, Nothing) input
+  Signal.foldp update (initialModel, Nothing) input
 
-model : Signal M.Model
+model : Signal Model
 model =
   Signal.map fst updatesWithEffect
 
@@ -90,7 +123,9 @@ actionChannel =
 
 seatColor : M.Model -> M.Seat -> String
 seatColor model seat =
-  if M.isSelected model seat then "#f00" else "rgba(0,0,0,0)"
+  if | M.isSelected model seat -> "#f00"
+     | M.isReserved model seat -> "#0f0"
+     | otherwise -> "rgba(0,0,0,0)"
 
 drawSeat : M.Model -> Int -> M.Seat -> S.Svg
 drawSeat model rowNumber seat =
@@ -102,7 +137,7 @@ drawSeat model rowNumber seat =
       ]
 
 drawRow : M.Model -> M.Row -> S.Svg
-drawRow model row = S.g [SA.transform <| "translate(0," ++ (toString <| (row.y - 1) * 25) ++ ")"]
+drawRow model row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 25) ++ ")"]
   [ S.g [SA.transform "translate(20, 0)"] (L.map (drawSeat model row.number) (M.seatsInRow model row))
   , S.text [SA.x "5", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
   , S.text [SA.x "1023", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]

@@ -1,41 +1,37 @@
-module Model (Model, Seat, Row, selectionsAsText, isUsable, updateSeats, rows, seatsInRow, initialModel, isSelected, toggleSelected) where
+module Model (Model, Seat, Row, selectionsAsText, isUsable, updateSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected) where
 import Dict as D
 import List as L
 import String as S
 
 type alias SeatId = String
+type alias Reservation = { seatId: String }
 
 
 type alias Row = { number: Int, y: Int }
-type alias Seat = { id : SeatId, x: Int, number: Int, row: Int, usable: Bool }
+type alias Seat = { id: SeatId, x: Int, number: Int, row: Int, usable: Bool }
 
-type alias Model = { seats : List Seat, rows: List Row, selections : List Seat }
+type alias Model = { reservations: List Reservation, seats: List Seat, rows: List Row, selections: List Seat }
 
 
 toggleSelected : Model -> Seat -> Model
 toggleSelected model seat =
   case seat.usable of
     True -> if | isSelected model seat -> { model | selections <- L.filter ((/=) seat) model.selections }
+               | isReserved model seat -> model
                | otherwise -> { model | selections <- seat :: model.selections }
     False -> model
 
-dummyRow : Int -> List Seat
-dummyRow row = L.map (\n -> {id = (toString <| row * n), x = n, number = n, row = row, usable = True}) [1..48]
-
-dummyStand : List Seat
-dummyStand = L.concat <| L.map dummyRow [1..16]
-
-dummyRows : List Row
-dummyRows = L.map (\n -> {number = 17 - n, y = n}) [1..16]
-
 initialModel : Model
-initialModel = {selections = [], rows = dummyRows, seats = dummyStand}
+initialModel = {selections = [], rows = [], seats = [], reservations = []}
 
 isSelected : Model -> Seat -> Bool
 isSelected m s = L.member s m.selections
 
 isUsable : Seat -> Bool
 isUsable = .usable
+
+isReserved : Model -> Seat -> Bool
+isReserved m s = L.member s.id <| L.map .seatId m.reservations
 
 
 rows : Model -> List Row
@@ -44,8 +40,8 @@ rows model = model.rows
 seatsInRow : Model -> Row -> List Seat
 seatsInRow model row = L.filter (\s -> s.row == row.number) model.seats
 
-updateSeats : Model -> List Seat -> Model
-updateSeats model seats = { model | seats <- seats }
+updateSeats : Model -> List Seat -> List Row -> Model
+updateSeats model seats rows = { model | rows <- rows, seats <- seats }
 
 selectionsAsText : Model -> String
 selectionsAsText model = S.concat <| L.intersperse ", " <| L.map (\s -> "(" ++ toString s.row ++ ", " ++ toString s.number ++ ")") model.selections
