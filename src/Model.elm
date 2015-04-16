@@ -1,4 +1,4 @@
-module Model (Model, Seat, Row, selectionsAsText, isUsable, updateSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected) where
 import Dict as D
 import List as L
 import String as S
@@ -42,6 +42,9 @@ seatsInRow model row = L.filter (\s -> s.row == row.number) model.seats
 
 updateSeats : Model -> List Seat -> List Row -> Model
 updateSeats model seats rows = { model | rows <- rows, seats <- seats }
+
+updateReservations : Model -> List Reservation -> Model
+updateReservations model reservations = { model | reservations <- reservations }
 
 selectionsAsText : Model -> String
 selectionsAsText model = S.concat <| L.intersperse ", " <| L.map (\s -> "(" ++ toString s.row ++ ", " ++ toString s.number ++ ")") model.selections

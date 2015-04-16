@@ -16,7 +16,8 @@ var flashdance = Elm.fullscreen(Elm.Flashdance, {
   // This doesn't seem to be some default, it's just here to
   // make sure the types between Elm and JS line up.
   seatsReceived: {seats: [], rows: []},
-  gigsReceived: []
+  gigsReceived: [],
+  reservationsReceived: []
 });
 
 function makeRequest(path) {
@@ -36,6 +37,10 @@ function catchSeats(gig_id) {
   makeRequest("/gigs/" + gig_id + "/seats").done(function(data) {
     console.log(data);
     flashdance.ports.seatsReceived.send(data);
+  });
+  makeRequest("/gigs/" + gig_id + "/reservations").done(function(data) {
+    console.log(data);
+    flashdance.ports.reservationsReceived.send(data);
   });
 }
 

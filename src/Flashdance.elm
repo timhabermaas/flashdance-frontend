@@ -18,7 +18,7 @@ import String
 import Model as M
 
 type alias GigId = String
-type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | GigsReceived (List Gig) | ClickGig Gig
+type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | GigsReceived (List Gig) | ClickGig Gig | ReservationsReceived (List M.Reservation)
 type Effect = FetchSeats GigId
 
 
@@ -35,6 +35,7 @@ update action (model, _) =
     ClickSeat seat -> ({ model | stand <- M.toggleSelected model.stand seat}, Nothing)
     UpdateSeats (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
+    ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
     NoOp -> (model, Nothing)
 
@@ -44,8 +45,10 @@ port requests = fooRequest
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 type alias Gig = { id: GigId, date: String, title: String }
 type alias GigsResponse = List Gig
+type alias ReservationsResponse = List M.Reservation
 
 port seatsReceived : Signal SeatsResponse
+port reservationsReceived : Signal ReservationsResponse
 port gigsReceived : Signal GigsResponse
 
 responseToAction : SeatsResponse -> Action
@@ -53,6 +56,9 @@ responseToAction r = UpdateSeats (r.seats, r.rows)
 
 responseToAction2 : GigsResponse -> Action
 responseToAction2 r = GigsReceived r
+
+responseToAction3 : ReservationsResponse -> Action
+responseToAction3 r = ReservationsReceived r
 
 
 toRequest : Maybe Effect -> GigId
@@ -104,7 +110,7 @@ main =
   Signal.map view model
 
 input : Signal Action
-input = Signal.mergeMany [(Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), (Signal.subscribe actionChannel)]
+input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), (Signal.subscribe actionChannel)]
 
 updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
