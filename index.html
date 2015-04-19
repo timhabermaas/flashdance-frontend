@@ -26,6 +26,10 @@ function makeRequest(path) {
   });
 }
 
+function postRequest(path, data) {
+  return $.post("https://tickets-backend-ruby.herokuapp.com" + path, JSON.stringify(data));
+}
+
 function catchGigs() {
   makeRequest("/gigs").done(function(data) {
     console.log(data);
@@ -33,18 +37,25 @@ function catchGigs() {
   });
 }
 
-function catchSeats(gig_id) {
-  makeRequest("/gigs/" + gig_id + "/seats").done(function(data) {
+function catchSeats(gigId) {
+  makeRequest("/gigs/" + gigId + "/seats").done(function(data) {
     console.log(data);
     flashdance.ports.seatsReceived.send(data);
   });
-  makeRequest("/gigs/" + gig_id + "/reservations").done(function(data) {
+  makeRequest("/gigs/" + gigId + "/reservations").done(function(data) {
     console.log(data);
     flashdance.ports.reservationsReceived.send(data);
   });
 }
 
+function submitOrder(attrs) {
+  postRequest("/gigs/" + attrs[0] + "/orders", {name: attrs[1], email: attrs[2], seatIds: attrs[3]}).done(function() {
+    console.log("done?")
+  });
+}
+
 flashdance.ports.requests.subscribe(catchSeats);
+flashdance.ports.orderRequests.subscribe(submitOrder);
 
 setTimeout(function() { catchGigs(); }, 1);
 

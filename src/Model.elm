@@ -1,4 +1,4 @@
-module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, clearSelections) where
 import Dict as D
 import List as L
 import String as S
@@ -46,5 +46,14 @@ updateSeats model seats rows = { model | rows <- rows, seats <- seats }
 updateReservations : Model -> List Reservation -> Model
 updateReservations model reservations = { model | reservations <- reservations }
 
+reserveSeats : Model -> List Seat -> Model
+reserveSeats model seats =
+  let newReservations = L.map (\s -> {seatId = s.id}) seats
+  in
+    { model | reservations <- model.reservations ++ newReservations }
+
 selectionsAsText : Model -> String
 selectionsAsText model = S.concat <| L.intersperse ", " <| L.map (\s -> "(" ++ toString s.row ++ ", " ++ toString s.number ++ ")") model.selections
+
+clearSelections : Model -> Model
+clearSelections m = { m | selections <- [] }

@@ -8,9 +8,8 @@ import Svg.Attributes as SA
 import Signal
 import List as L
 import Text
-import Graphics.Element (..)
-import Graphics.Input (..)
-import Graphics.Collage (..)
+import Graphics.Element as Element
+import Graphics.Input.Field as Field
 import Color (..)
 import Maybe
 import Time
@@ -18,16 +17,42 @@ import String
 import Model as M
 
 type alias GigId = String
-type Action = NoOp | ClickSeat M.Seat | UpdateSeats (List M.Seat, List M.Row) | GigsReceived (List Gig) | ClickGig Gig | ReservationsReceived (List M.Reservation)
-type Effect = FetchSeats GigId
+type alias Name = String
+type alias Email = String
 
+type Action
+  = NoOp
+  | ClickSeat M.Seat
+  | UpdateSeats (List M.Seat, List M.Row)
+  | GigsReceived (List Gig)
+  | ClickGig Gig
+  | ReservationsReceived (List M.Reservation)
+  | OrderTicket Gig Name Email (List M.Seat)
+
+type Effect
+  = FetchSeats GigId
+  | SubmitOrder GigId Name Email (List M.Seat)
+
+type SubmitState
+  = None
+  | Waiting Effect
+  | Submitted
 
 type CurrentPage = GigIndex | GigView Gig
-type alias Model = { stand: M.Model, gigs: List Gig, page: CurrentPage }
+type alias CurrentFormInput = { name: String, email: String }
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = ""}}
 
+currentGig : CurrentPage -> Maybe Gig
+currentGig page = case page of
+  GigView p -> Just p
+  _ -> Nothing
+
+fromJust : Maybe a -> a
+fromJust x = case x of
+  Just v -> v
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -37,10 +62,25 @@ update action (model, _) =
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
+    OrderTicket gig name email seats -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats)
     NoOp -> (model, Nothing)
 
-port requests : Signal String
-port requests = fooRequest
+port requests : Signal GigId
+port requests = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf String.isEmpty ""
+
+isOrderRequest : Maybe Effect -> Bool
+isOrderRequest a = case a of
+  Just (SubmitOrder _ _ _ _) -> True
+  _ -> False
+
+foo : Maybe Effect -> (String, String, String, List String)
+foo x = case x of
+  Just (SubmitOrder g a b c) -> (g, a, b, L.map .id c)
+  _ -> ("", "", "", [])
+
+-- TODO get rid of the default value?
+port orderRequests : Signal (GigId, String, String, List String)
+port orderRequests = Signal.map snd updatesWithEffect |> Signal.keepIf isOrderRequest (Just (SubmitOrder "" "" "" [])) |> Signal.map foo
 
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 type alias Gig = { id: GigId, date: String, title: String }
@@ -64,10 +104,8 @@ responseToAction3 r = ReservationsReceived r
 toRequest : Maybe Effect -> GigId
 toRequest e = case e of
   (Just (FetchSeats s)) -> s
-  Nothing -> ""
+  _ -> ""
 
-fooRequest : Signal String
-fooRequest = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf String.isEmpty ""
 
 drawGigEntry : Gig -> H.Html
 drawGigEntry gig =
@@ -100,6 +138,9 @@ view model =
           [ H.div [HA.class "col-md-12"]
             [ drawStand model.stand
             , H.text <| M.selectionsAsText model.stand
+            , H.a [HA.href "#", HE.onClick (Signal.send actionChannel (OrderTicket (fromJust (currentGig model.page)) "foo" "bar@gmail.com" model.stand.selections))]
+              [ H.text "Bestellen!"
+              ]
             ]
           ]
         ]
@@ -123,6 +164,20 @@ model =
 actionChannel : Signal.Channel Action
 actionChannel =
   Signal.channel NoOp
+
+viewField : String -> Field.Content -> (Field.Content -> Update) -> Element
+viewField label content toUpdate =
+  flow right
+    [ container 140 36 midRight (Text.plainText label)
+    , container 220 36 middle <|
+        size 180 26 <|
+          Field.field Field.defaultStyle (Signal.send updateChan << toUpdate) "" content
+    ]
+
+viewForm : CurrentFormInput -> Element
+viewForm formInput =
+
+
 
 
 -- SVG FOO
