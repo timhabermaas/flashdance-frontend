@@ -5,12 +5,12 @@ import Html.Attributes as HA
 import Html.Events as HE
 import Svg as S
 import Svg.Attributes as SA
-import Signal
+import Signal exposing (Address, Signal)
 import List as L
 import Text
 import Graphics.Element as Element
 import Graphics.Input.Field as Field
-import Color (..)
+import Color exposing (..)
 import Maybe
 import Time
 import String
@@ -66,7 +66,7 @@ update action (model, _) =
     NoOp -> (model, Nothing)
 
 port requests : Signal GigId
-port requests = Signal.map (snd >> toRequest) updatesWithEffect |> Signal.dropIf String.isEmpty ""
+port requests = Signal.map (snd >> toRequest) updatesWithEffect -- |> Signal.dropIf String.isEmpty ""
 
 isOrderRequest : Maybe Effect -> Bool
 isOrderRequest a = case a of
@@ -80,7 +80,7 @@ foo x = case x of
 
 -- TODO get rid of the default value?
 port orderRequests : Signal (GigId, String, String, List String)
-port orderRequests = Signal.map snd updatesWithEffect |> Signal.keepIf isOrderRequest (Just (SubmitOrder "" "" "" [])) |> Signal.map foo
+port orderRequests = Signal.map snd updatesWithEffect |> Signal.map foo
 
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 type alias Gig = { id: GigId, date: String, title: String }
@@ -107,24 +107,24 @@ toRequest e = case e of
   _ -> ""
 
 
-drawGigEntry : Gig -> H.Html
-drawGigEntry gig =
+drawGigEntry : Address Action -> Gig -> H.Html
+drawGigEntry address gig =
   H.li []
-    [ H.a [HA.href "#", HE.onClick (Signal.send actionChannel (ClickGig gig))]
+    [ H.a [HA.href "#", HE.onClick address (ClickGig gig)]
       [ H.text gig.title
       , H.span [HA.class "badge"] [H.text "2 freie Plätze"]
       ]
     ]
 
-view : Model -> H.Html
-view model =
+view : Address Action -> Model -> H.Html
+view address model =
   case model.page of
     GigIndex ->
       H.div [HA.class "container"]
         [ H.div [HA.class "row"]
           [ H.div [HA.class "col-md-12"]
             [ H.h1 [] [H.text "Aufführungen"]
-            , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map drawGigEntry model.gigs)
+            , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
             ]
           ]
         ]
@@ -136,9 +136,9 @@ view model =
           ]
         , H.div [HA.class "row"]
           [ H.div [HA.class "col-md-12"]
-            [ drawStand model.stand
+            [ drawStand address model.stand
             , H.text <| M.selectionsAsText model.stand
-            , H.a [HA.href "#", HE.onClick (Signal.send actionChannel (OrderTicket (fromJust (currentGig model.page)) "foo" "bar@gmail.com" model.stand.selections))]
+            , H.a [HA.href "#", HE.onClick address (OrderTicket (fromJust (currentGig model.page)) "foo" "bar@gmail.com" model.stand.selections)]
               [ H.text "Bestellen!"
               ]
             ]
@@ -148,10 +148,10 @@ view model =
 
 main : Signal H.Html
 main =
-  Signal.map view model
+  Signal.map (view actionChannel.address) model
 
 input : Signal Action
-input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), (Signal.subscribe actionChannel)]
+input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), actionChannel.signal]
 
 updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
@@ -161,21 +161,9 @@ model : Signal Model
 model =
   Signal.map fst updatesWithEffect
 
-actionChannel : Signal.Channel Action
+actionChannel : Signal.Mailbox Action
 actionChannel =
-  Signal.channel NoOp
-
-viewField : String -> Field.Content -> (Field.Content -> Update) -> Element
-viewField label content toUpdate =
-  flow right
-    [ container 140 36 midRight (Text.plainText label)
-    , container 220 36 middle <|
-        size 180 26 <|
-          Field.field Field.defaultStyle (Signal.send updateChan << toUpdate) "" content
-    ]
-
-viewForm : CurrentFormInput -> Element
-viewForm formInput =
+  Signal.mailbox NoOp
 
 
 
@@ -188,25 +176,25 @@ seatColor model seat =
      | M.isReserved model seat -> "#0f0"
      | otherwise -> "rgba(0,0,0,0)"
 
-drawSeat : M.Model -> Int -> M.Seat -> S.Svg
-drawSeat model rowNumber seat =
+drawSeat : Address Action -> M.Model -> Int -> M.Seat -> S.Svg
+drawSeat address model rowNumber seat =
   let text = if M.isUsable seat then toString seat.number else ""
   in
-    S.g [HE.onClick (Signal.send actionChannel (ClickSeat seat)), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
+    S.g [HE.onClick address (ClickSeat seat), SA.transform <| "translate(" ++ (toString <| seat.x * 18) ++ ", 0)"]
       [ S.rect [SA.cursor "pointer", SA.style <| "fill:" ++ (seatColor model seat) ++ "; stroke-width: 1; stroke: rgb(0, 0, 0)", SA.width "18", SA.height "18"] []
       , S.text [SA.x "9", SA.y "13", SA.cursor "pointer", SA.textAnchor "middle", SA.fontSize "11"] [ H.text text]
       ]
 
-drawRow : M.Model -> M.Row -> S.Svg
-drawRow model row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 25) ++ ")"]
-  [ S.g [SA.transform "translate(20, 0)"] (L.map (drawSeat model row.number) (M.seatsInRow model row))
+drawRow : Address Action -> M.Model -> M.Row -> S.Svg
+drawRow address model row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 25) ++ ")"]
+  [ S.g [SA.transform "translate(20, 0)"] (L.map (drawSeat address model row.number) (M.seatsInRow model row))
   , S.text [SA.x "5", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
   , S.text [SA.x "1023", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
   ]
 
 
-drawStand : M.Model -> H.Html
-drawStand model = S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "480", SA.width "1050"]
+drawStand : Address Action -> M.Model -> H.Html
+drawStand address model = S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "480", SA.width "1050"]
   [ S.g [SA.transform "translate(18, 1)"]
-    (L.map (drawRow model) (M.rows model))
+    (L.map (drawRow address model) (M.rows model))
   ]

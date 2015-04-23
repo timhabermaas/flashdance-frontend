@@ -54,8 +54,18 @@ function submitOrder(attrs) {
   });
 }
 
-flashdance.ports.requests.subscribe(catchSeats);
-flashdance.ports.orderRequests.subscribe(submitOrder);
+flashdance.ports.requests.subscribe(function(foo) {
+  if (foo === "") {
+    return;
+  }
+  catchSeats(foo);
+});
+flashdance.ports.orderRequests.subscribe(function(gig_id, name, email, seats) {
+  if (seats === undefined) {
+    return;
+  }
+  submitOrder(gig_id, name, email, seats);
+});
 
 setTimeout(function() { catchGigs(); }, 1);
 
