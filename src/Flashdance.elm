@@ -148,10 +148,10 @@ view address model =
 
 main : Signal H.Html
 main =
-  Signal.map (view actionChannel.address) model
+  Signal.map (view actions.address) model
 
 input : Signal Action
-input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), actionChannel.signal]
+input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), actions.signal]
 
 updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
@@ -161,8 +161,8 @@ model : Signal Model
 model =
   Signal.map fst updatesWithEffect
 
-actionChannel : Signal.Mailbox Action
-actionChannel =
+actions : Signal.Mailbox Action
+actions =
   Signal.mailbox NoOp
 
 
