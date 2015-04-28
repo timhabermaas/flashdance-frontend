@@ -15,6 +15,9 @@ import Maybe
 import Time
 import String
 import Model as M
+import Http
+import Task exposing (Task, andThen)
+import Json.Decode exposing (..)
 
 type alias GigId = String
 type alias Name = String
@@ -84,18 +87,21 @@ port orderRequests = Signal.map snd updatesWithEffect |> Signal.map foo
 
 type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
 type alias Gig = { id: GigId, date: String, title: String }
-type alias GigsResponse = List Gig
 type alias ReservationsResponse = List M.Reservation
 
 port seatsReceived : Signal SeatsResponse
 port reservationsReceived : Signal ReservationsResponse
-port gigsReceived : Signal GigsResponse
+
+gigDecoder : Decoder (List Gig)
+gigDecoder =
+  list (object3 Gig ("id" := string) ("date" := string) ("title" := string))
+
+port fetchGigs : Task Http.Error ()
+port fetchGigs =
+  Http.get gigDecoder "https://tickets-backend-ruby.herokuapp.com/gigs" `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
 
 responseToAction : SeatsResponse -> Action
 responseToAction r = UpdateSeats (r.seats, r.rows)
-
-responseToAction2 : GigsResponse -> Action
-responseToAction2 r = GigsReceived r
 
 responseToAction3 : ReservationsResponse -> Action
 responseToAction3 r = ReservationsReceived r
@@ -151,7 +157,7 @@ main =
   Signal.map (view actions.address) model
 
 input : Signal Action
-input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction2 gigsReceived), (Signal.map responseToAction seatsReceived), actions.signal]
+input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction seatsReceived), actions.signal]
 
 updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
