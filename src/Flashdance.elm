@@ -18,6 +18,7 @@ import Model as M
 import Http
 import Task exposing (Task, andThen)
 import Json.Decode exposing (..)
+import Json.Encode exposing (..)
 
 type alias GigId = String
 type alias Name = String
@@ -36,14 +37,13 @@ type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat)
 
-type SubmitState
-  = None
-  | Waiting Effect
-  | Submitted
-
 type CurrentPage = GigIndex | GigView Gig
 type alias CurrentFormInput = { name: String, email: String }
+type alias Gig = { id: GigId, date: String, title: String }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage }
+
+baseApiEndpoint : String
+baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 
 initialModel : Model
 initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = ""}}
@@ -68,49 +68,72 @@ update action (model, _) =
     OrderTicket gig name email seats -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats)
     NoOp -> (model, Nothing)
 
-port requests : Signal GigId
-port requests = Signal.map (snd >> toRequest) updatesWithEffect -- |> Signal.dropIf String.isEmpty ""
 
-isOrderRequest : Maybe Effect -> Bool
-isOrderRequest a = case a of
-  Just (SubmitOrder _ _ _ _) -> True
-  _ -> False
-
-foo : Maybe Effect -> (String, String, String, List String)
-foo x = case x of
-  Just (SubmitOrder g a b c) -> (g, a, b, L.map .id c)
-  _ -> ("", "", "", [])
-
--- TODO get rid of the default value?
-port orderRequests : Signal (GigId, String, String, List String)
-port orderRequests = Signal.map snd updatesWithEffect |> Signal.map foo
-
-type alias SeatsResponse = { seats: List M.Seat, rows: List M.Row }
-type alias Gig = { id: GigId, date: String, title: String }
-type alias ReservationsResponse = List M.Reservation
-
-port seatsReceived : Signal SeatsResponse
-port reservationsReceived : Signal ReservationsResponse
 
 gigDecoder : Decoder (List Gig)
 gigDecoder =
-  list (object3 Gig ("id" := string) ("date" := string) ("title" := string))
+  Json.Decode.list (object3 Gig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string))
 
 port fetchGigs : Task Http.Error ()
 port fetchGigs =
-  Http.get gigDecoder "https://tickets-backend-ruby.herokuapp.com/gigs" `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
+  Http.get gigDecoder (baseApiEndpoint ++ "/gigs") `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
 
-responseToAction : SeatsResponse -> Action
-responseToAction r = UpdateSeats (r.seats, r.rows)
+seatDecoder : Decoder M.Seat
+seatDecoder =
+  object5 M.Seat
+    ("id" := Json.Decode.string)
+    ("x" := Json.Decode.int)
+    ("number" := Json.Decode.int)
+    ("row" := Json.Decode.int)
+    ("usable" := Json.Decode.bool)
 
-responseToAction3 : ReservationsResponse -> Action
-responseToAction3 r = ReservationsReceived r
+rowDecoder : Decoder M.Row
+rowDecoder =
+  object2 M.Row
+    ("number" := Json.Decode.int)
+    ("y" := Json.Decode.int)
+
+seatsDecoder : Decoder (List M.Seat, List M.Row)
+seatsDecoder =
+  object2 (,)
+    ("seats" := (Json.Decode.list seatDecoder))
+    ("rows" := (Json.Decode.list rowDecoder))
+
+reservationDecoder : Decoder M.Reservation
+reservationDecoder =
+  object1 M.Reservation ("seatId" := Json.Decode.string)
+
+reservationsDecoder : Decoder (List M.Reservation)
+reservationsDecoder = Json.Decode.list reservationDecoder
+
+seatsRequestGigIdSignal : Signal (Maybe GigId)
+seatsRequestGigIdSignal =
+  let toId effect =
+    case effect of
+      Just (FetchSeats id) -> Just id
+      _ -> Nothing
+  in
+    Signal.map toId effects
 
 
-toRequest : Maybe Effect -> GigId
-toRequest e = case e of
-  (Just (FetchSeats s)) -> s
-  _ -> ""
+port seatsRequest : Signal (Task Http.Error (List ()))
+port seatsRequest =
+  let send gigId = case gigId of
+    Just id ->
+      Task.sequence [(Http.get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
+       (Http.get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")) `Task.andThen` (\r -> Signal.send actions.address (ReservationsReceived r))
+      ]
+    Nothing -> Task.succeed [()]
+
+  in Signal.map send seatsRequestGigIdSignal
+
+port orderRequest : Signal (Task Http.Error (List String))
+port orderRequest =
+  let maybeRequest s = case s of
+    Just (SubmitOrder id name email seats) -> Http.post (Json.Decode.list Json.Decode.string) (baseApiEndpoint ++ "/gigs/" ++ id ++ "/orders") (Http.string (Json.Encode.encode 0 (object [("name", Json.Encode.string name), ("email", Json.Encode.string email), ("seatIds", Json.Encode.list (List.map Json.Encode.string (List.map .id seats)))])))
+    _ -> Task.succeed []
+  in Signal.map maybeRequest effects
+
 
 
 drawGigEntry : Address Action -> Gig -> H.Html
@@ -157,11 +180,21 @@ main =
   Signal.map (view actions.address) model
 
 input : Signal Action
-input = Signal.mergeMany [(Signal.map responseToAction3 reservationsReceived), (Signal.map responseToAction seatsReceived), actions.signal]
+input = actions.signal
 
 updatesWithEffect : Signal (Model, Maybe Effect)
 updatesWithEffect =
   Signal.foldp update (initialModel, Nothing) input
+
+isJust : Maybe a -> Bool
+isJust m =
+  case m of
+    Just x -> True
+    Nothing -> False
+
+effects : Signal (Maybe Effect)
+effects =
+  Signal.filter isJust Nothing (Signal.map snd updatesWithEffect)
 
 model : Signal Model
 model =

@@ -5,59 +5,13 @@
   <meta charset="UTF-8">
   <title>Flashdance Tickets</title>
   <script type="text/javascript" src="elm.js"></script>
-  <script type="text/javascript" src="jquery-1.11.2.js"></script>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 </head>
 
 <body>
 </body>
 <script>
-var flashdance = Elm.fullscreen(Elm.Flashdance, {
-  // This doesn't seem to be some default, it's just here to
-  // make sure the types between Elm and JS line up.
-  seatsReceived: {seats: [], rows: []},
-  reservationsReceived: []
-});
-
-function makeRequest(path) {
-  return $.getJSON("https://tickets-backend-ruby.herokuapp.com" + path, {
-    format: "json"
-  });
-}
-
-function postRequest(path, data) {
-  return $.post("https://tickets-backend-ruby.herokuapp.com" + path, JSON.stringify(data));
-}
-
-function catchSeats(gigId) {
-  makeRequest("/gigs/" + gigId + "/seats").done(function(data) {
-    console.log(data);
-    flashdance.ports.seatsReceived.send(data);
-  });
-  makeRequest("/gigs/" + gigId + "/reservations").done(function(data) {
-    console.log(data);
-    flashdance.ports.reservationsReceived.send(data);
-  });
-}
-
-function submitOrder(attrs) {
-  postRequest("/gigs/" + attrs[0] + "/orders", {name: attrs[1], email: attrs[2], seatIds: attrs[3]}).done(function() {
-    console.log("done?")
-  });
-}
-
-flashdance.ports.requests.subscribe(function(foo) {
-  if (foo === "") {
-    return;
-  }
-  catchSeats(foo);
-});
-flashdance.ports.orderRequests.subscribe(function(gig_id, name, email, seats) {
-  if (seats === undefined) {
-    return;
-  }
-  submitOrder(gig_id, name, email, seats);
-});
+var flashdance = Elm.fullscreen(Elm.Flashdance, {});
 
 </script>
 </html>
