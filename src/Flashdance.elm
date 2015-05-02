@@ -54,10 +54,6 @@ currentGig page = case page of
   GigView p -> Just p
   _ -> Nothing
 
-fromJust : Maybe a -> a
-fromJust x = case x of
-  Just v -> v
-
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
@@ -158,7 +154,7 @@ view address model =
             ]
           ]
         ]
-    GigView _ ->
+    GigView gig ->
       H.div [HA.class "container"]
         [ H.div [HA.class "row"]
           [ H.div [HA.class "col-md-12"]
@@ -168,7 +164,7 @@ view address model =
           [ H.div [HA.class "col-md-12"]
             [ drawStand address model.stand
             , H.text <| M.selectionsAsText model.stand
-            , H.a [HA.href "#", HE.onClick address (OrderTicket (fromJust (currentGig model.page)) "foo" "bar@gmail.com" model.stand.selections)]
+            , H.a [HA.href "#", HE.onClick address (OrderTicket gig "foo" "bar@gmail.com" model.stand.selections)]
               [ H.text "Bestellen!"
               ]
             ]
