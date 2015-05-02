@@ -15,6 +15,7 @@ import Maybe
 import Time
 import String
 import Model as M
+import Task.Extra as TE
 import Http
 import Task exposing (Task, andThen)
 import Json.Decode exposing (..)
@@ -116,14 +117,14 @@ seatsRequestGigIdSignal =
     Signal.map toId effects
 
 
-port seatsRequest : Signal (Task Http.Error (List ()))
+port seatsRequest : Signal (Task Http.Error (List Task.ThreadID))
 port seatsRequest =
   let send gigId = case gigId of
     Just id ->
-      Task.sequence [(Http.get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
+      TE.parallel [(Http.get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
        (Http.get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")) `Task.andThen` (\r -> Signal.send actions.address (ReservationsReceived r))
       ]
-    Nothing -> Task.succeed [()]
+    Nothing -> Task.sequence [Task.spawn (Task.succeed [()])]
 
   in Signal.map send seatsRequestGigIdSignal
 
