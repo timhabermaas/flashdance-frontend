@@ -18,8 +18,7 @@ import Model as M
 import Task.Extra as TE
 import Http
 import Task exposing (Task, andThen)
-import Json.Decode exposing (..)
-import Json.Encode exposing (..)
+import HttpRequests exposing (..)
 
 type alias GigId = String
 type alias Name = String
@@ -49,11 +48,6 @@ baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 initialModel : Model
 initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = ""}}
 
-currentGig : CurrentPage -> Maybe Gig
-currentGig page = case page of
-  GigView p -> Just p
-  _ -> Nothing
-
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
@@ -67,41 +61,12 @@ update action (model, _) =
 
 
 
-gigDecoder : Decoder (List Gig)
-gigDecoder =
-  Json.Decode.list (object3 Gig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string))
 
 port fetchGigs : Task Http.Error ()
 port fetchGigs =
-  Http.get gigDecoder (baseApiEndpoint ++ "/gigs") `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
+  HttpRequests.fetchGigs `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
 
-seatDecoder : Decoder M.Seat
-seatDecoder =
-  object5 M.Seat
-    ("id" := Json.Decode.string)
-    ("x" := Json.Decode.int)
-    ("number" := Json.Decode.int)
-    ("row" := Json.Decode.int)
-    ("usable" := Json.Decode.bool)
 
-rowDecoder : Decoder M.Row
-rowDecoder =
-  object2 M.Row
-    ("number" := Json.Decode.int)
-    ("y" := Json.Decode.int)
-
-seatsDecoder : Decoder (List M.Seat, List M.Row)
-seatsDecoder =
-  object2 (,)
-    ("seats" := (Json.Decode.list seatDecoder))
-    ("rows" := (Json.Decode.list rowDecoder))
-
-reservationDecoder : Decoder M.Reservation
-reservationDecoder =
-  object1 M.Reservation ("seatId" := Json.Decode.string)
-
-reservationsDecoder : Decoder (List M.Reservation)
-reservationsDecoder = Json.Decode.list reservationDecoder
 
 seatsRequestGigIdSignal : Signal (Maybe GigId)
 seatsRequestGigIdSignal =
@@ -117,18 +82,19 @@ port seatsRequest : Signal (Task Http.Error (List Task.ThreadID))
 port seatsRequest =
   let send gigId = case gigId of
     Just id ->
-      TE.parallel [(Http.get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
-       (Http.get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")) `Task.andThen` (\r -> Signal.send actions.address (ReservationsReceived r))
-      ]
+      TE.parallel
+        [(HttpRequests.fetchSeats id) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
+         (HttpRequests.fetchReservations id) `Task.andThen` (\r -> Signal.send actions.address (ReservationsReceived r))
+        ]
     Nothing -> Task.sequence [Task.spawn (Task.succeed [()])]
 
   in Signal.map send seatsRequestGigIdSignal
 
-port orderRequest : Signal (Task Http.Error (List String))
+port orderRequest : Signal (Task Http.Error String)
 port orderRequest =
   let maybeRequest s = case s of
-    Just (SubmitOrder id name email seats) -> Http.post (Json.Decode.list Json.Decode.string) (baseApiEndpoint ++ "/gigs/" ++ id ++ "/orders") (Http.string (Json.Encode.encode 0 (object [("name", Json.Encode.string name), ("email", Json.Encode.string email), ("seatIds", Json.Encode.list (List.map Json.Encode.string (List.map .id seats)))])))
-    _ -> Task.succeed []
+    Just (SubmitOrder id name email seats) -> HttpRequests.submitOrder id name email (List.map .id seats)
+    _ -> Task.succeed ""
   in Signal.map maybeRequest effects
 
 
