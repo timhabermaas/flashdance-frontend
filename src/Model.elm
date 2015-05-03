@@ -52,8 +52,8 @@ reserveSeats model seats =
   in
     { model | reservations <- model.reservations ++ newReservations }
 
-selectionsAsText : Model -> String
-selectionsAsText model = S.concat <| L.intersperse ", " <| L.map (\s -> "(" ++ toString s.row ++ ", " ++ toString s.number ++ ")") model.selections
+selectionsAsText : List Seat -> String
+selectionsAsText selections = S.concat <| L.intersperse ", " <| L.map (\s -> "(" ++ toString s.row ++ ", " ++ toString s.number ++ ")") selections
 
 clearSelections : Model -> Model
 clearSelections m = { m | selections <- [] }

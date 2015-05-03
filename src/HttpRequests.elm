@@ -10,11 +10,11 @@ baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 
 -- TODO this is duplicated in Flashdance.elm
 type alias GigId = String
-type alias Gig = { id: GigId, date: String, title: String }
+type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
 
 gigDecoder : Decoder (List Gig)
 gigDecoder =
-  Json.Decode.list (object3 Gig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string))
+  Json.Decode.list (object4 Gig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string) ("freeSeats" := Json.Decode.int))
 
 reservationDecoder : Decoder M.Reservation
 reservationDecoder =

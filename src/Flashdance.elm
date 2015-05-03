@@ -45,7 +45,7 @@ type Effect
 type CurrentPage = GigIndex | GigView Gig
 type FlashMessage = Info String | Error String | Hidden
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
-type alias Gig = { id: GigId, date: String, title: String }
+type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
@@ -125,7 +125,8 @@ drawGigEntry address gig =
   H.li []
     [ H.a [HA.href "#", HE.onClick address (ClickGig gig)]
       [ H.text gig.title
-      , H.span [HA.class "badge"] [H.text "2 freie Plätze"]
+      , H.span [HA.class "badge"]
+        [ H.text <| (toString gig.freeSeats) ++ " freie Plätze" ]
       ]
     ]
 
@@ -167,9 +168,7 @@ view address model =
             ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
-              [ drawStand address model.stand
-              , H.text <| M.selectionsAsText model.stand
-              ]
+              [ drawStand address model.stand ]
             ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
@@ -179,7 +178,9 @@ view address model =
                     [ H.text "Tickets bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
-                  [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
+                  [ H.h2 [] [ H.text "Reservierte Plaetze" ]
+                  , H.text <| M.selectionsAsText model.stand.selections
+                  , viewTicketOrderForm gig address model.formInput model.stand.selections ]
                 ]
               ]
             ]
