@@ -178,7 +178,7 @@ view address model =
                     [ H.text "Tickets bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
-                  [ H.h2 [] [ H.text "Reservierte Plaetze" ]
+                  [ H.h2 [] [ H.text "Reservierte Plätze" ]
                   , H.text <| M.selectionsAsText model.stand.selections
                   , viewTicketOrderForm gig address model.formInput model.stand.selections ]
                 ]
