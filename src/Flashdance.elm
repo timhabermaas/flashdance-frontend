@@ -206,11 +206,11 @@ numberInput = formInput "number"
 -- TODO remove selections by sliming down `OrderTicket`
 viewTicketOrderForm : Gig -> Address Action -> CurrentFormInput -> (List M.Seat) -> H.Html
 viewTicketOrderForm gig address form selections =
-  H.form [HE.onSubmit address (OrderTicket gig form.name form.email selections)]
+  H.div []
     [ textInput address UpdateName "name" "Name",
       emailInput address UpdateEmail "email" "E-Mail-Adresse",
       numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten",
-      H.button [HA.class "btn btn-default"]
+      H.button [HE.onClick address (OrderTicket gig form.name form.email selections), HA.class "btn btn-default"]
         [ H.text "Bestellen"
         ]
     ]
