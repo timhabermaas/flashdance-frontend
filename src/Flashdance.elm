@@ -32,13 +32,16 @@ type Action
   | ClickGig Gig
   | ReservationsReceived (List M.Reservation)
   | OrderTicket Gig Name Email (List M.Seat)
+  | UpdateEmail String
+  | UpdateName String
+  | UpdateReducedCount String
 
 type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat)
 
 type CurrentPage = GigIndex | GigView Gig
-type alias CurrentFormInput = { name: String, email: String }
+type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: String, title: String }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage }
 
@@ -46,7 +49,7 @@ baseApiEndpoint : String
 baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = ""}}
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = ""}}
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -57,6 +60,9 @@ update action (model, _) =
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
     OrderTicket gig name email seats -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats)
+    UpdateEmail email -> ({model | formInput <- {name = model.formInput.name, email = email, reduced = model.formInput.reduced}}, Nothing)
+    UpdateName name -> ({model | formInput <- {name = name, email = model.formInput.email, reduced = model.formInput.reduced}}, Nothing)
+    UpdateReducedCount reduced -> ({model | formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
     NoOp -> (model, Nothing)
 
 
@@ -130,9 +136,6 @@ view address model =
           [ H.div [HA.class "col-md-12"]
             [ drawStand address model.stand
             , H.text <| M.selectionsAsText model.stand
-            , H.a [HA.href "#", HE.onClick address (OrderTicket gig "foo" "bar@gmail.com" model.stand.selections)]
-              [ H.text "Bestellen!"
-              ]
             ]
           ]
         , H.div [HA.class "row"]
@@ -143,19 +146,23 @@ view address model =
                   [ H.text "Tickets bestellen" ]
                 ]
               , H.div [HA.class "panel-body"]
-                [ viewTicketOrderForm gig address model.stand.selections ]
+                [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
               ]
             ]
           ]
         ]
 
 -- form helpers
-formInput : String -> String -> String -> H.Html
-formInput type' name text =
+formInput : String -> Address Action -> (String -> Action) -> String -> String -> H.Html
+formInput type' address action name text =
   H.div [HA.class "form-group"]
   [ H.label [HA.for name]
     [ H.text text]
-  , H.input [HA.type' type', HA.class "form-control", HA.id name] []
+  , H.input
+      [ HA.type' type',
+        HA.class "form-control",
+        HA.id name,
+        HE.on "input" HE.targetValue <| Signal.message address << action] []
   ]
 
 textInput = formInput "text"
@@ -163,12 +170,12 @@ emailInput = formInput "email"
 numberInput = formInput "number"
 
 -- TODO remove selections by sliming down `OrderTicket`
-viewTicketOrderForm : Gig -> Address Action -> (List M.Seat) -> H.Html
-viewTicketOrderForm gig address selections =
-  H.form [HE.onSubmit address (OrderTicket gig "foo" "bar@gmail.com" selections)]
-    [ textInput "name" "Name",
-      emailInput "email" "E-Mail-Adresse",
-      numberInput "reduced" "davon ermäßigte Karten",
+viewTicketOrderForm : Gig -> Address Action -> CurrentFormInput -> (List M.Seat) -> H.Html
+viewTicketOrderForm gig address form selections =
+  H.form [HE.onSubmit address (OrderTicket gig form.name form.email selections)]
+    [ textInput address UpdateName "name" "Name",
+      emailInput address UpdateEmail "email" "E-Mail-Adresse",
+      numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten",
       H.button [HA.class "btn btn-default"]
         [ H.text "Bestellen"
         ]
