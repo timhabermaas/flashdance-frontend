@@ -35,21 +35,21 @@ type Action
   | UpdateEmail String
   | UpdateName String
   | UpdateReducedCount String
+  | HttpOrderFailed String
+  | CloseFlashMessage
 
 type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat)
 
 type CurrentPage = GigIndex | GigView Gig
+type FlashMessage = Info String | Error String | Hidden
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: String, title: String }
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage }
-
-baseApiEndpoint : String
-baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = ""}}
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = ""}, flashMessage = Hidden }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -63,6 +63,8 @@ update action (model, _) =
     UpdateEmail email -> ({model | formInput <- {name = model.formInput.name, email = email, reduced = model.formInput.reduced}}, Nothing)
     UpdateName name -> ({model | formInput <- {name = name, email = model.formInput.email, reduced = model.formInput.reduced}}, Nothing)
     UpdateReducedCount reduced -> ({model | formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
+    HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
+    CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     NoOp -> (model, Nothing)
 
 
@@ -71,7 +73,6 @@ update action (model, _) =
 port fetchGigs : Task Http.Error ()
 port fetchGigs =
   HttpRequests.fetchGigs `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
-
 
 
 seatsRequestGigIdSignal : Signal (Maybe GigId)
@@ -96,11 +97,25 @@ port seatsRequest =
 
   in Signal.map send seatsRequestGigIdSignal
 
-port orderRequest : Signal (Task Http.Error String)
+
+httpErrorToMessage : Http.Error -> String
+httpErrorToMessage error =
+  case error of
+    Http.Timeout -> "Server nicht erreichbar."
+    Http.NetworkError -> "Server nicht erreichbar."
+    Http.UnexpectedPayload response -> "Error"
+    Http.BadResponse status response -> response
+
+port orderRequest : Signal (Task Http.Error ())
 port orderRequest =
   let maybeRequest s = case s of
-    Just (SubmitOrder id name email seats) -> HttpRequests.submitOrder id name email (List.map .id seats)
-    _ -> Task.succeed ""
+    -- TODO the `andThen` is only here to satisfy the type checker
+    --      we probably want to redirect the user anyway.
+    Just (SubmitOrder id name email seats) ->
+      (HttpRequests.submitOrder id name email (List.map .id seats)
+      `Task.andThen` (\result -> Signal.send actions.address NoOp))
+      `Task.onError` (\error -> Signal.send actions.address (HttpOrderFailed (httpErrorToMessage error)))
+    _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
 
@@ -114,43 +129,61 @@ drawGigEntry address gig =
       ]
     ]
 
+viewFlashMessage : Address Action -> FlashMessage -> H.Html
+viewFlashMessage address message =
+  let empty = H.div [] []
+      alert text class =
+        H.div [HA.class ("alert alert-" ++ class ++ " alert-dismissible"), HA.stringProperty "role" "alert"]
+          [ H.button [HE.onClick address CloseFlashMessage, HA.type' "button", HA.class "close", HA.stringProperty "aria-label" "Close"]
+            [ H.span [] [ H.text "×" ] ]
+          , H.text text
+          ]
+  in
+    case message of
+      Hidden -> empty
+      Error m -> alert m "danger"
+
 view : Address Action -> Model -> H.Html
 view address model =
-  case model.page of
-    GigIndex ->
-      H.div [HA.class "container"]
-        [ H.div [HA.class "row"]
-          [ H.div [HA.class "col-md-12"]
-            [ H.h1 [] [H.text "Aufführungen"]
-            , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
-            ]
-          ]
-        ]
-    GigView gig ->
-      H.div [HA.class "container"]
-        [ H.div [HA.class "row"]
-          [ H.div [HA.class "col-md-12"]
-            [ H.h1 [] [H.text "Gig"] ]
-          ]
-        , H.div [HA.class "row"]
-          [ H.div [HA.class "col-md-12"]
-            [ drawStand address model.stand
-            , H.text <| M.selectionsAsText model.stand
-            ]
-          ]
-        , H.div [HA.class "row"]
-          [ H.div [HA.class "col-md-12"]
-            [ H.div [HA.class "panel panel-default"]
-              [ H.div [HA.class "panel-heading"]
-                [ H.h3 [HA.class "panel-title"]
-                  [ H.text "Tickets bestellen" ]
-                ]
-              , H.div [HA.class "panel-body"]
-                [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
+  let header = viewFlashMessage address model.flashMessage
+  in
+    case model.page of
+      GigIndex ->
+        H.div [HA.class "container"]
+          [ H.div [HA.class "row"]
+            [ H.div [HA.class "col-md-12"]
+              [ H.h1 [] [H.text "Aufführungen"]
+              , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
               ]
             ]
           ]
-        ]
+      GigView gig ->
+        H.div [HA.class "container"]
+          [ H.div [HA.class "row"]
+            [ header ]
+          , H.div [HA.class "row"]
+            [ H.div [HA.class "col-md-12"]
+              [ H.h1 [] [H.text "Gig"] ]
+            ]
+          , H.div [HA.class "row"]
+            [ H.div [HA.class "col-md-12"]
+              [ drawStand address model.stand
+              , H.text <| M.selectionsAsText model.stand
+              ]
+            ]
+          , H.div [HA.class "row"]
+            [ H.div [HA.class "col-md-12"]
+              [ H.div [HA.class "panel panel-default"]
+                [ H.div [HA.class "panel-heading"]
+                  [ H.h3 [HA.class "panel-title"]
+                    [ H.text "Tickets bestellen" ]
+                  ]
+                , H.div [HA.class "panel-body"]
+                  [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
+                ]
+              ]
+            ]
+          ]
 
 -- form helpers
 formInput : String -> Address Action -> (String -> Action) -> String -> String -> H.Html

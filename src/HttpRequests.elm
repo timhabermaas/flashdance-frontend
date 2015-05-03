@@ -62,4 +62,4 @@ orderEncoder name email seatIds = Json.Encode.encode 0 (object [("name", Json.En
 
 submitOrder : String -> String -> String -> List String -> Task Http.Error String
 submitOrder gigId name email seatIds =
-  Http.post Json.Decode.string (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds))
+  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds))
