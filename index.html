@@ -5,48 +5,13 @@
   <meta charset="UTF-8">
   <title>Flashdance Tickets</title>
   <script type="text/javascript" src="elm.js"></script>
-  <script type="text/javascript" src="jquery-1.11.2.js"></script>
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/css/bootstrap.min.css">
 </head>
 
 <body>
 </body>
 <script>
-var flashdance = Elm.fullscreen(Elm.Flashdance, {
-  // This doesn't seem to be some default, it's just here to
-  // make sure the types between Elm and JS line up.
-  seatsReceived: {seats: [], rows: []},
-  gigsReceived: [],
-  reservationsReceived: []
-});
-
-function makeRequest(path) {
-  return $.getJSON("https://tickets-backend-ruby.herokuapp.com" + path, {
-    format: "json"
-  });
-}
-
-function catchGigs() {
-  makeRequest("/gigs").done(function(data) {
-    console.log(data);
-    flashdance.ports.gigsReceived.send(data);
-  });
-}
-
-function catchSeats(gig_id) {
-  makeRequest("/gigs/" + gig_id + "/seats").done(function(data) {
-    console.log(data);
-    flashdance.ports.seatsReceived.send(data);
-  });
-  makeRequest("/gigs/" + gig_id + "/reservations").done(function(data) {
-    console.log(data);
-    flashdance.ports.reservationsReceived.send(data);
-  });
-}
-
-flashdance.ports.requests.subscribe(catchSeats);
-
-setTimeout(function() { catchGigs(); }, 1);
+var flashdance = Elm.fullscreen(Elm.Flashdance, {});
 
 </script>
 </html>
