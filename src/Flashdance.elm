@@ -135,7 +135,44 @@ view address model =
               ]
             ]
           ]
+        , H.div [HA.class "row"]
+          [ H.div [HA.class "col-md-12"]
+            [ H.div [HA.class "panel panel-default"]
+              [ H.div [HA.class "panel-heading"]
+                [ H.h3 [HA.class "panel-title"]
+                  [ H.text "Tickets bestellen" ]
+                ]
+              , H.div [HA.class "panel-body"]
+                [ viewTicketOrderForm gig address model.stand.selections ]
+              ]
+            ]
+          ]
         ]
+
+-- form helpers
+formInput : String -> String -> String -> H.Html
+formInput type' name text =
+  H.div [HA.class "form-group"]
+  [ H.label [HA.for name]
+    [ H.text text]
+  , H.input [HA.type' type', HA.class "form-control", HA.id name] []
+  ]
+
+textInput = formInput "text"
+emailInput = formInput "email"
+numberInput = formInput "number"
+
+-- TODO remove selections by sliming down `OrderTicket`
+viewTicketOrderForm : Gig -> Address Action -> (List M.Seat) -> H.Html
+viewTicketOrderForm gig address selections =
+  H.form [HE.onSubmit address (OrderTicket gig "foo" "bar@gmail.com" selections)]
+    [ textInput "name" "Name",
+      emailInput "email" "E-Mail-Adresse",
+      numberInput "reduced" "davon ermäßigte Karten",
+      H.button [HA.class "btn btn-default"]
+        [ H.text "Bestellen"
+        ]
+    ]
 
 
 main : Signal H.Html
