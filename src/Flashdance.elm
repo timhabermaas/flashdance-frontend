@@ -49,7 +49,7 @@ type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = ""}, flashMessage = Hidden }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -178,17 +178,92 @@ view address model =
                     [ H.text "Tickets bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
-                  [ H.h2 [] [ H.text "Reservierte Plätze" ]
-                  , H.text <| M.selectionsAsText model.stand.selections
-                  , viewTicketOrderForm gig address model.formInput model.stand.selections ]
+                  [ H.div [HA.class "row"]
+                    [ H.div [HA.class "col-md-6"]
+                      [ H.h2 [] [ H.text "Reservierte Plätze" ]
+                      , H.text <| M.selectionsAsText model.stand.selections
+                      , viewOrderTable model
+                      ]
+                    , H.div [HA.class "col-md-6"]
+                      [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
+                    ]
+                  ]
                 ]
               ]
             ]
           ]
 
+unwrap : Result x y -> y
+unwrap r = case r of
+  Result.Ok s -> s
+
+type Price = EUR Int
+
+reducedCount : Model -> Maybe Int
+reducedCount model =
+  Result.toMaybe <| String.toInt model.formInput.reduced
+
+fullCount : Model -> Maybe Int
+fullCount model =
+  Maybe.map (\r -> (L.length model.stand.selections) - r) (reducedCount model)
+
+reducedPrice : Model -> Maybe Price
+reducedPrice model =
+  Maybe.map (\n -> EUR (n * 1200)) <| reducedCount model
+
+fullPrice : Model -> Maybe Price
+fullPrice model =
+  Maybe.map (\n -> EUR (n * 1500)) <| fullCount model
+
+addPrice : Price -> Price -> Price
+addPrice (EUR x) (EUR y) = EUR <| x + y
+
+combine : (a -> b -> c) -> Maybe a -> Maybe b -> Maybe c
+combine f a b = case a of
+  Just x -> case b of
+    Just y -> Just <| f x y
+    Nothing -> Nothing
+  Nothing -> Nothing
+
+totalPrice : Model -> Maybe Price
+totalPrice model =
+  combine addPrice (fullPrice model) (reducedPrice model)
+
+formatPrice : Price -> String
+formatPrice p =
+  case p of
+    EUR x -> "€ " ++ toString ((toFloat x) / 100)
+
+mapWithDefault : (a -> b) -> b -> Maybe a -> b
+mapWithDefault f d x =
+  Maybe.withDefault d <| Maybe.map f x
+
+viewOrderTable : Model -> H.Html
+viewOrderTable model =
+  H.div []
+    [ H.table [HA.class "table"]
+      [ H.tbody []
+        [ H.tr []
+          [ H.td [] [ H.text <| (mapWithDefault toString "-" <| fullCount model) ++ " reguläre Karten" ]
+          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault formatPrice "-" <| fullPrice model ]
+          ]
+        , H.tr []
+          [ H.td [] [ H.text <| (mapWithDefault toString "-" <| reducedCount model) ++ " ermäßigte Karten" ]
+          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault formatPrice "-" <| reducedPrice model ]
+          ]
+        ]
+      , H.tfoot []
+        [ H.tr []
+          [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
+          , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault formatPrice "-" <| fullPrice model ] ]
+          ]
+        ]
+      ]
+    ]
+
 -- form helpers
-formInput : String -> Address Action -> (String -> Action) -> String -> String -> H.Html
-formInput type' address action name text =
+formInput : String -> Address Action -> (String -> Action) -> String -> String -> String -> H.Html
+formInput type' address action name text value =
   H.div [HA.class "form-group"]
   [ H.label [HA.for name]
     [ H.text text]
@@ -196,6 +271,7 @@ formInput type' address action name text =
       [ HA.type' type',
         HA.class "form-control",
         HA.id name,
+        HA.value value,
         HE.on "input" HE.targetValue <| Signal.message address << action] []
   ]
 
@@ -207,9 +283,9 @@ numberInput = formInput "number"
 viewTicketOrderForm : Gig -> Address Action -> CurrentFormInput -> (List M.Seat) -> H.Html
 viewTicketOrderForm gig address form selections =
   H.div []
-    [ textInput address UpdateName "name" "Name",
-      emailInput address UpdateEmail "email" "E-Mail-Adresse",
-      numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten",
+    [ textInput address UpdateName "name" "Name" form.name,
+      emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
+      numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten" form.reduced,
       H.button [HE.onClick address (OrderTicket gig form.name form.email selections), HA.class "btn btn-default"]
         [ H.text "Bestellen"
         ]
