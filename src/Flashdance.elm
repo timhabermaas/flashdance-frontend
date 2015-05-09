@@ -31,7 +31,7 @@ type Action
   | GigsReceived (List Gig)
   | ClickGig Gig
   | ReservationsReceived (List M.Reservation)
-  | OrderTicket Gig Name Email (List M.Seat)
+  | OrderTicket Gig Name Email (List M.Seat) String
   | UpdateEmail String
   | UpdateName String
   | UpdateReducedCount String
@@ -40,7 +40,7 @@ type Action
 
 type Effect
   = FetchSeats GigId
-  | SubmitOrder GigId Name Email (List M.Seat)
+  | SubmitOrder GigId Name Email (List M.Seat) Int
 
 type CurrentPage = GigIndex | GigView Gig
 type FlashMessage = Info String | Error String | Hidden
@@ -59,7 +59,10 @@ update action (model, _) =
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
-    OrderTicket gig name email seats -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats)
+    OrderTicket gig name email seats reduced ->
+      case String.toInt reduced of
+        Result.Ok x -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats x)
+        Result.Err x -> (model, Nothing)
     UpdateEmail email -> ({model | formInput <- {name = model.formInput.name, email = email, reduced = model.formInput.reduced}}, Nothing)
     UpdateName name -> ({model | formInput <- {name = name, email = model.formInput.email, reduced = model.formInput.reduced}}, Nothing)
     UpdateReducedCount reduced -> ({model | formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
@@ -111,8 +114,8 @@ port orderRequest =
   let maybeRequest s = case s of
     -- TODO the `andThen` is only here to satisfy the type checker
     --      we probably want to redirect the user anyway.
-    Just (SubmitOrder id name email seats) ->
-      (HttpRequests.submitOrder id name email (List.map .id seats)
+    Just (SubmitOrder id name email seats reducedCount) ->
+      (HttpRequests.submitOrder id name email (List.map .id seats) reducedCount
       `Task.andThen` (\result -> Signal.send actions.address NoOp))
       `Task.onError` (\error -> Signal.send actions.address (HttpOrderFailed (httpErrorToMessage error)))
     _ -> Task.succeed ()
@@ -286,7 +289,7 @@ viewTicketOrderForm gig address form selections =
     [ textInput address UpdateName "name" "Name" form.name,
       emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
       numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten" form.reduced,
-      H.button [HE.onClick address (OrderTicket gig form.name form.email selections), HA.class "btn btn-default"]
+      H.button [HE.onClick address (OrderTicket gig form.name form.email selections form.reduced), HA.class "btn btn-default"]
         [ H.text "Bestellen"
         ]
     ]

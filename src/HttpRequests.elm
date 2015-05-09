@@ -57,9 +57,9 @@ fetchReservations id =
   Http.get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")
 
 
-orderEncoder : String -> String -> (List String) -> String
-orderEncoder name email seatIds = Json.Encode.encode 0 (object [("name", Json.Encode.string name), ("email", Json.Encode.string email), ("seatIds", Json.Encode.list (List.map Json.Encode.string seatIds))])
+orderEncoder : String -> String -> (List String) -> Int -> String
+orderEncoder name email seatIds reducedCount = Json.Encode.encode 0 (object [("name", Json.Encode.string name), ("reducedCount", Json.Encode.int reducedCount), ("email", Json.Encode.string email), ("seatIds", Json.Encode.list (List.map Json.Encode.string seatIds))])
 
-submitOrder : String -> String -> String -> List String -> Task Http.Error String
-submitOrder gigId name email seatIds =
-  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds))
+submitOrder : String -> String -> String -> List String -> Int -> Task Http.Error String
+submitOrder gigId name email seatIds reducedCount =
+  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds reducedCount))
