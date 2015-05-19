@@ -27,7 +27,7 @@ type alias Email = String
 type Action
   = NoOp
   | ClickSeat M.Seat
-  | UpdateSeats (List M.Seat, List M.Row)
+  | SeatsReceived (List M.Seat, List M.Row)
   | GigsReceived (List Gig)
   | ClickGig Gig
   | ReservationsReceived (List M.Reservation)
@@ -42,7 +42,7 @@ type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat) Int
 
-type CurrentPage = GigIndex | GigView Gig
+type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
@@ -55,7 +55,7 @@ update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
     ClickSeat seat -> ({ model | stand <- M.toggleSelected model.stand seat}, Nothing)
-    UpdateSeats (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
+    SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
@@ -93,7 +93,7 @@ port seatsRequest =
   let send gigId = case gigId of
     Just id ->
       TE.parallel
-        [(HttpRequests.fetchSeats id) `Task.andThen` (\r -> Signal.send actions.address (UpdateSeats r)),
+        [(HttpRequests.fetchSeats id) `Task.andThen` (\r -> Signal.send actions.address (SeatsReceived r)),
          (HttpRequests.fetchReservations id) `Task.andThen` (\r -> Signal.send actions.address (ReservationsReceived r))
         ]
     Nothing -> Task.sequence [Task.spawn (Task.succeed [()])]
@@ -150,6 +150,9 @@ viewFlashMessage address message =
 view : Address Action -> Model -> H.Html
 view address model =
   let header = viewFlashMessage address model.flashMessage
+      gigNavItem address gig =
+        H.li [] [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
+
   in
     case model.page of
       GigIndex ->
@@ -165,6 +168,10 @@ view address model =
         H.div [HA.class "container"]
           [ H.div [HA.class "row"]
             [ header ]
+          , H.div [HA.class "row"]
+            [ H.nav []
+              [ H.ul [HA.class "pager"] (L.map (gigNavItem address) model.gigs) ]
+            ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
               [ H.h1 [] [H.text "Gig"] ]
