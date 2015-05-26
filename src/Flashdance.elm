@@ -37,19 +37,21 @@ type Action
   | UpdateReducedCount String
   | HttpOrderFailed String
   | CloseFlashMessage
+  | StartOrder Name Email
 
 type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat) Int
+  | StartOrderRequest Name Email
 
-type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
+type CurrentPage = GigIndex | GigView Gig | RegisterView -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden }
+initialModel = { page = RegisterView, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -68,6 +70,7 @@ update action (model, _) =
     UpdateReducedCount reduced -> ({model | formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
+    StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
     NoOp -> (model, Nothing)
 
 
@@ -122,6 +125,14 @@ port orderRequest =
   in Signal.map maybeRequest effects
 
 
+port orderStartRequest : Signal (Task Http.Error String)
+port orderStartRequest =
+  let maybeRequest s = case s of
+    Just (StartOrderRequest name email) ->
+      HttpRequests.startOrder name email
+    _ -> Task.succeed "foo"
+  in Signal.map maybeRequest effects
+
 
 drawGigEntry : Address Action -> Gig -> H.Html
 drawGigEntry address gig =
@@ -155,6 +166,11 @@ view address model =
 
   in
     case model.page of
+      RegisterView ->
+        H.div [HA.class "container"]
+          [ H.div [HA.class "row"]
+            [ viewRegisterForm address model.formInput ]
+          ]
       GigIndex ->
         H.div [HA.class "container"]
           [ H.div [HA.class "row"]
@@ -288,6 +304,16 @@ formInput type' address action name text value =
 textInput = formInput "text"
 emailInput = formInput "email"
 numberInput = formInput "number"
+
+viewRegisterForm : Address Action -> CurrentFormInput -> H.Html
+viewRegisterForm address form =
+  H.div []
+    [ textInput address UpdateName "name" "Name" form.name,
+      emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
+      H.button [HE.onClick address (StartOrder form.name form.email), HA.class "btn btn-default"]
+        [ H.text "Weiter"
+        ]
+    ]
 
 -- TODO remove selections by sliming down `OrderTicket`
 viewTicketOrderForm : Gig -> Address Action -> CurrentFormInput -> (List M.Seat) -> H.Html

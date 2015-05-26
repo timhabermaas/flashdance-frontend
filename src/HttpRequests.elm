@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder) where
 import Model as M
 import Http
 import Task exposing (..)
@@ -63,3 +63,7 @@ orderEncoder name email seatIds reducedCount = Json.Encode.encode 0 (object [("n
 submitOrder : String -> String -> String -> List String -> Int -> Task Http.Error String
 submitOrder gigId name email seatIds reducedCount =
   Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds reducedCount))
+
+startOrder : String -> String -> Task Http.Error String
+startOrder name email =
+  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
