@@ -42,6 +42,8 @@ type Action
   | StartOrder Name Email
   | OrderStarted String
   | SeatReserved SeatId
+  | SeatSelected SeatId
+  | ShowErrorFlashMessage String
 
 type Effect
   = FetchSeats GigId
@@ -65,8 +67,8 @@ update action (model, _) =
     ClickSeat seat -> case model.orderState of
       Ordering orderId -> (model, Just (ReserveSeatRequest orderId seat.id))
       _ -> (model, Nothing)
-      --({ model | stand <- M.toggleSelected model.stand seat}, Just (ReserveSeatRequest model.)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
+    SeatSelected seatId -> ({model | stand <- M.toggleSelected model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
     SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
@@ -82,6 +84,7 @@ update action (model, _) =
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
     OrderStarted orderId -> ({model | page <- GigIndex, orderState <- Ordering orderId}, Nothing)
+    ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
     NoOp -> (model, Nothing)
 
 
@@ -150,7 +153,9 @@ port reserveSeatRequest =
   let maybeRequest s = case s of
     Just (ReserveSeatRequest orderId seatId) ->
       (HttpRequests.reserveSeat orderId seatId)
-      `Task.andThen` (\result -> Signal.send actions.address (SeatReserved seatId))
+      `Task.andThen` (\result -> Signal.send actions.address (SeatSelected seatId))
+      `Task.onError` (\result -> (Signal.send actions.address (ShowErrorFlashMessage "Sitz schon reserviert."))
+        `Task.andThen` (\foo -> Signal.send actions.address (SeatReserved seatId)))
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
@@ -397,8 +402,8 @@ actions =
 
 seatColor : M.Model -> M.Seat -> String
 seatColor model seat =
-  if | M.isSelected model seat -> "#f00"
-     | M.isReserved model seat -> "#0f0"
+  if | M.isSelected model seat -> "#0f0"
+     | M.isReserved model seat -> "#f00"
      | otherwise -> "rgba(0,0,0,0)"
 
 drawSeat : Address Action -> M.Model -> Int -> M.Seat -> S.Svg
