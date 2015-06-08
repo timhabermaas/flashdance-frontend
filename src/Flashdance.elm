@@ -21,6 +21,8 @@ import Task exposing (Task, andThen)
 import HttpRequests exposing (..)
 
 type alias GigId = String
+type alias SeatId = String
+type alias OrderId = String
 type alias Name = String
 type alias Email = String
 
@@ -38,25 +40,33 @@ type Action
   | HttpOrderFailed String
   | CloseFlashMessage
   | StartOrder Name Email
+  | OrderStarted String
+  | SeatReserved SeatId
 
 type Effect
   = FetchSeats GigId
   | SubmitOrder GigId Name Email (List M.Seat) Int
   | StartOrderRequest Name Email
+  | ReserveSeatRequest OrderId SeatId
 
 type CurrentPage = GigIndex | GigView Gig | RegisterView -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
+type OrderState = Ordering String | Browsing
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, page: CurrentPage, flashMessage: FlashMessage }
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = RegisterView, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden }
+initialModel = { page = RegisterView, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
-    ClickSeat seat -> ({ model | stand <- M.toggleSelected model.stand seat}, Nothing)
+    ClickSeat seat -> case model.orderState of
+      Ordering orderId -> (model, Just (ReserveSeatRequest orderId seat.id))
+      _ -> (model, Nothing)
+      --({ model | stand <- M.toggleSelected model.stand seat}, Just (ReserveSeatRequest model.)
+    SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
@@ -71,6 +81,7 @@ update action (model, _) =
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
+    OrderStarted orderId -> ({model | page <- GigIndex, orderState <- Ordering orderId}, Nothing)
     NoOp -> (model, Nothing)
 
 
@@ -125,12 +136,22 @@ port orderRequest =
   in Signal.map maybeRequest effects
 
 
-port orderStartRequest : Signal (Task Http.Error String)
+port orderStartRequest : Signal (Task Http.Error ())
 port orderStartRequest =
   let maybeRequest s = case s of
     Just (StartOrderRequest name email) ->
-      HttpRequests.startOrder name email
-    _ -> Task.succeed "foo"
+      (HttpRequests.startOrder name email)
+      `Task.andThen` (\orderId -> Signal.send actions.address (OrderStarted orderId))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
+port reserveSeatRequest : Signal (Task Http.Error ())
+port reserveSeatRequest =
+  let maybeRequest s = case s of
+    Just (ReserveSeatRequest orderId seatId) ->
+      (HttpRequests.reserveSeat orderId seatId)
+      `Task.andThen` (\result -> Signal.send actions.address (SeatReserved seatId))
+    _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
 
@@ -206,7 +227,8 @@ view address model =
                 , H.div [HA.class "panel-body"]
                   [ H.div [HA.class "row"]
                     [ H.div [HA.class "col-md-6"]
-                      [ H.h2 [] [ H.text "Reservierte Plätze" ]
+                      [ viewOrderInfos model
+                      , H.h2 [] [ H.text "Reservierte Plätze" ]
                       , H.text <| M.selectionsAsText model.stand.selections
                       , viewOrderTable model
                       ]
@@ -219,9 +241,20 @@ view address model =
             ]
           ]
 
+viewOrderInfos : Model -> H.Html
+viewOrderInfos model =
+  case model.orderState of
+    Ordering orderId -> H.h1 [] [ H.text <| "foo" ++ orderId ]
+    Browsing -> H.h1 [] [ H.text "browsing" ]
+
 unwrap : Result x y -> y
 unwrap r = case r of
   Result.Ok s -> s
+
+unwrapMaybe : Maybe x -> x
+unwrapMaybe m =
+  case m of
+    Maybe.Just j -> j
 
 type Price = EUR Int
 

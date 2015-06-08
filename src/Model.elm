@@ -1,4 +1,4 @@
-module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, clearSelections) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, clearSelections, findSeat) where
 import Dict as D
 import List as L
 import String as S
@@ -33,6 +33,12 @@ isUsable = .usable
 isReserved : Model -> Seat -> Bool
 isReserved m s = L.member s.id <| L.map .seatId m.reservations
 
+
+findSeat : Model -> SeatId -> Maybe Seat
+findSeat model seatId =
+  case (L.filter (\s -> s.id == seatId) model.seats) of
+    [] -> Nothing
+    (x::xs) -> Just x
 
 rows : Model -> List Row
 rows model = model.rows

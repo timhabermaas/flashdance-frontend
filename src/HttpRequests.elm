@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat) where
 import Model as M
 import Http
 import Task exposing (..)
@@ -10,6 +10,8 @@ baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 
 -- TODO this is duplicated in Flashdance.elm
 type alias GigId = String
+type alias OrderId = String
+type alias SeatId = String
 type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
 
 gigDecoder : Decoder (List Gig)
@@ -66,4 +68,19 @@ submitOrder gigId name email seatIds reducedCount =
 
 startOrder : String -> String -> Task Http.Error String
 startOrder name email =
-  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
+  Http.post (Json.Decode.at ["orderId"] Json.Decode.string) (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
+
+put : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
+put decoder url body =
+  let request =
+        { verb = "PUT"
+        , headers = []
+        , url = url
+        , body = body
+        }
+  in
+      Http.fromJson decoder (Http.send Http.defaultSettings request)
+
+reserveSeat : OrderId -> SeatId -> Task Http.Error String
+reserveSeat orderId seatId =
+  put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/reservations/" ++ seatId) (Http.empty)
