@@ -351,7 +351,7 @@ viewRegisterForm address form =
     [ textInput address UpdateName "name" "Name" form.name,
       emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
       H.button [HE.onClick address (StartOrder form.name form.email), HA.class "btn btn-default"]
-        [ H.text "Weiter"
+        [ H.text "Anmelden"
         ]
     ]
 
@@ -426,7 +426,9 @@ drawRow address model row = S.g [SA.transform <| "translate(0," ++ (toString <| 
 
 
 drawStand : Address Action -> M.Model -> H.Html
-drawStand address model = S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "480", SA.width "1050"]
-  [ S.g [SA.transform "translate(18, 1)"]
-    (L.map (drawRow address model) (M.rows model))
-  ]
+drawStand address model =
+  S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "500", SA.width "1050"]
+    [ S.g [SA.transform "translate(18, 1)"] (L.map (drawRow address model) (M.rows model))
+    , S.line [SA.x1 "182", SA.y1 "450", SA.x2 "885", SA.y2 "450", SA.style "stroke:rgb(0,0,0);stroke-width:2"] []
+    , S.text [SA.x "510", SA.y "475", SA.style "font-size: 16px"] [H.text "BÜHNE"]
+    ]
