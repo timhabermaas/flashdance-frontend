@@ -7,14 +7,9 @@ import Svg as S
 import Svg.Attributes as SA
 import Signal exposing (Address, Signal)
 import List as L
-import Text
 import Date
 import Date.Format as DF
-import Graphics.Element as Element
-import Graphics.Input.Field as Field
 import Color exposing (..)
-import Maybe
-import Time
 import String
 import Model as M
 import Task.Extra as TE
@@ -48,6 +43,8 @@ type Action
   | SeatSelected SeatId
   | SeatUnselected SeatId
   | ShowErrorFlashMessage String
+  | UpdateDeliveryOption DeliveryOption
+  | FinishOrderTicket OrderId String -- TODO this should be an integer
 
 type Effect
   = FetchSeats GigId
@@ -58,14 +55,15 @@ type Effect
 
 type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
-type alias OrderInfo = { name: String, email: String, id: OrderId }
+type DeliveryOption = PickUpBoxOffice | PickUpBeforehand | Delivery
+type alias OrderInfo = { name: String, email: String, id: OrderId, deliveryOption: Maybe DeliveryOption }
 type OrderState = Ordering OrderInfo | Browsing
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage }
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
@@ -90,11 +88,20 @@ update action (model, _) =
         Result.Err x -> (model, Nothing)
     UpdateEmail email -> ({model | formInput <- {name = model.formInput.name, email = email, reduced = model.formInput.reduced}}, Nothing)
     UpdateName name -> ({model | formInput <- {name = name, email = model.formInput.email, reduced = model.formInput.reduced}}, Nothing)
-    UpdateReducedCount reduced -> ({model | formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
+    UpdateDeliveryOption option ->
+      case model.orderState of
+        Browsing -> (model, Nothing)
+        Ordering order -> ({model | orderState <- Ordering ({name = order.name, email = order.email, id = order.id, deliveryOption = Just option})}, Nothing)
+    UpdateReducedCount reduced ->
+      if reducedCountValid reduced then
+        -- TODO needs more sophistacted approach, we reset the error field even if there might still be errors
+        ({model | innerFlashMessage <- Hidden, formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
+      else
+        ({model | innerFlashMessage <- Error "Bitte gültige Anzahl an ermäßigten Karten angeben.", formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
-    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId}}, Nothing)
+    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = Nothing}}, Nothing)
     ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
     NoOp -> (model, Nothing)
 
@@ -191,12 +198,12 @@ drawGigEntry address gig =
       ]
     ]
 
-viewFlashMessage : Address Action -> FlashMessage -> H.Html
-viewFlashMessage address message =
+viewFlashMessage : Address Action -> Action -> FlashMessage -> H.Html
+viewFlashMessage address action message =
   let empty = H.div [] []
       alert text class =
         H.div [HA.class ("alert alert-" ++ class ++ " alert-dismissible"), HA.stringProperty "role" "alert"]
-          [ H.button [HE.onClick address CloseFlashMessage, HA.type' "button", HA.class "close", HA.stringProperty "aria-label" "Close"]
+          [ H.button [HE.onClick address action, HA.type' "button", HA.class "close", HA.stringProperty "aria-label" "Close"]
             [ H.span [] [ H.text "×" ] ]
           , H.text text
           ]
@@ -210,7 +217,8 @@ formatDate = DF.format "%d.%m.%Y um %H:%M Uhr"
 
 view : Address Action -> Model -> H.Html
 view address model =
-  let header = viewFlashMessage address model.flashMessage
+  let header = viewFlashMessage address CloseFlashMessage model.flashMessage
+      innerHeader = viewFlashMessage address CloseFlashMessage model.innerFlashMessage
       gigNavItem address currentGig gig =
         H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
 
@@ -249,7 +257,9 @@ view address model =
                     [ H.text "Karten bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
-                  [ viewOrderPanel address gig model ]
+                  [ innerHeader
+                  , viewOrderPanel address gig model
+                  ]
                 ]
               ]
             ]
@@ -257,7 +267,19 @@ view address model =
 
 viewOrderInfos : OrderInfo -> H.Html
 viewOrderInfos order =
-  H.h1 [] [ H.text <| order.name ++ " ", H.small [] [H.text order.email] ]
+  H.h1 [] [ H.text <| "Karten für '" ++ order.name ++ "' ", H.small [] [H.text order.email] ]
+
+viewOrderFinishForm : Address Action -> OrderInfo -> Model -> H.Html
+viewOrderFinishForm address order model =
+  H.div [HA.class "row"]
+    [ H.div [HA.class "col-md-6"]
+      [ numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten" model.formInput.reduced
+      , radioInputs address UpdateDeliveryOption "deliveryOption" [PickUpBoxOffice, PickUpBeforehand, Delivery] PickUpBeforehand
+      , H.button [HE.onClick address (FinishOrderTicket order.id model.formInput.reduced), HA.class "btn btn-default"]
+        [ H.text "Bestellen"
+        ]
+      ]
+    ]
 
 viewOrderPanel : Address Action -> Gig -> Model -> H.Html
 viewOrderPanel address gig model =
@@ -266,6 +288,7 @@ viewOrderPanel address gig model =
       H.div []
         [ viewOrderInfos order
         , viewOrderTable model
+        , viewOrderFinishForm address order model
         ]
     Browsing ->
       H.div [HA.class "row"]
@@ -282,6 +305,9 @@ unwrapMaybe m =
 reducedCount : Model -> Maybe Int
 reducedCount model =
   Result.toMaybe <| String.toInt model.formInput.reduced
+
+reducedCountValid : String -> Bool
+reducedCountValid = isJust << Result.toMaybe << String.toInt
 
 fullCount : Model -> Maybe Int
 fullCount model =
@@ -316,26 +342,38 @@ mapWithDefault f d x =
 
 viewOrderTable : Model -> H.Html
 viewOrderTable model =
-  H.div []
-    [ H.table [HA.class "table"]
-      [ H.tbody []
-        [ H.tr []
-          [ H.td [] [ H.text <| (mapWithDefault toString "-" <| fullCount model) ++ " reguläre Karten" ]
-          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ]
+  let optionalDeliveryCosts = case model.orderState of
+    Ordering order ->
+      case order.deliveryOption of
+        Just Delivery ->
+          [ H.tr []
+            [ H.td [] [ H.text "Versandkosten" ]
+            , H.td [HA.class "text-right"] [ H.text <| Price.format <| Price.fromInt 300]
+            ]
           ]
-        , H.tr []
-          [ H.td [] [ H.text <| (mapWithDefault toString "-" <| reducedCount model) ++ " ermäßigte Karten" ]
-          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| reducedPrice model ]
-          ]
-        ]
-      , H.tfoot []
-        [ H.tr []
-          [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
-          , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ] ]
+        _ -> []
+    _ -> []
+  in
+    H.div []
+      [ H.table [HA.class "table"]
+        [ H.tbody []
+          ([ H.tr []
+            [ H.td [] [ H.text <| (mapWithDefault toString "-" <| fullCount model) ++ " reguläre Karten" ]
+            , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ]
+            ]
+          , H.tr []
+            [ H.td [] [ H.text <| (mapWithDefault toString "-" <| reducedCount model) ++ " ermäßigte Karten" ]
+            , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| reducedPrice model ]
+            ]
+          ] ++ optionalDeliveryCosts)
+        , H.tfoot []
+          [ H.tr []
+            [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
+            , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ] ]
+            ]
           ]
         ]
       ]
-    ]
 
 -- form helpers
 formInput : String -> Address Action -> (String -> Action) -> String -> String -> String -> H.Html
@@ -354,6 +392,22 @@ formInput type' address action name text value =
 textInput = formInput "text"
 emailInput = formInput "email"
 numberInput = formInput "number"
+
+radioInputs : Address Action -> (DeliveryOption -> Action) -> String -> List DeliveryOption -> DeliveryOption -> H.Html
+radioInputs address action name labels checked =
+  let radioField option checked =
+        H.div [HA.class "radio"]
+          [ H.label []
+            [ H.input [HE.onClick address (action option), HA.type' "radio", HA.name name, HA.checked (option == checked)] []
+            , H.text <| labelFor option
+            ]
+          ]
+      labelFor option = case option of
+        PickUpBeforehand -> "Abholung vorab an der HGR"
+        PickUpBoxOffice -> "Abholung an der Abendkasse"
+        Delivery -> "Karten per Post zusenden lassen (Aufpreis von € 3,-)"
+  in
+    H.div [HA.class "form-group"] (L.map (\l -> radioField l checked) labels)
 
 viewRegisterForm : Address Action -> CurrentFormInput -> H.Html
 viewRegisterForm address form =
