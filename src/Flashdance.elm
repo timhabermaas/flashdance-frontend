@@ -21,6 +21,7 @@ import Task.Extra as TE
 import Http
 import Task exposing (Task, andThen)
 import HttpRequests exposing (..)
+import Price
 
 type alias GigId = String
 type alias SeatId = String
@@ -278,8 +279,6 @@ unwrapMaybe m =
   case m of
     Maybe.Just j -> j
 
-type Price = EUR Int
-
 reducedCount : Model -> Maybe Int
 reducedCount model =
   Result.toMaybe <| String.toInt model.formInput.reduced
@@ -288,16 +287,16 @@ fullCount : Model -> Maybe Int
 fullCount model =
   Maybe.map (\r -> (L.length model.stand.selections) - r) (reducedCount model)
 
-reducedPrice : Model -> Maybe Price
+reducedPrice : Model -> Maybe Price.Price
 reducedPrice model =
-  Maybe.map (\n -> EUR (n * 1200)) <| reducedCount model
+  Maybe.map (\n -> Price.fromInt (n * 1200)) <| reducedCount model
 
-fullPrice : Model -> Maybe Price
+fullPrice : Model -> Maybe Price.Price
 fullPrice model =
-  Maybe.map (\n -> EUR (n * 1500)) <| fullCount model
+  Maybe.map (\n -> Price.fromInt (n * 1500)) <| fullCount model
 
-addPrice : Price -> Price -> Price
-addPrice (EUR x) (EUR y) = EUR <| x + y
+addPrice : Price.Price -> Price.Price -> Price.Price
+addPrice = Price.add
 
 combine : (a -> b -> c) -> Maybe a -> Maybe b -> Maybe c
 combine f a b = case a of
@@ -306,14 +305,10 @@ combine f a b = case a of
     Nothing -> Nothing
   Nothing -> Nothing
 
-totalPrice : Model -> Maybe Price
+totalPrice : Model -> Maybe Price.Price
 totalPrice model =
   combine addPrice (fullPrice model) (reducedPrice model)
 
-formatPrice : Price -> String
-formatPrice p =
-  case p of
-    EUR x -> "€ " ++ toString ((toFloat x) / 100)
 
 mapWithDefault : (a -> b) -> b -> Maybe a -> b
 mapWithDefault f d x =
@@ -326,17 +321,17 @@ viewOrderTable model =
       [ H.tbody []
         [ H.tr []
           [ H.td [] [ H.text <| (mapWithDefault toString "-" <| fullCount model) ++ " reguläre Karten" ]
-          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault formatPrice "-" <| fullPrice model ]
+          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ]
           ]
         , H.tr []
           [ H.td [] [ H.text <| (mapWithDefault toString "-" <| reducedCount model) ++ " ermäßigte Karten" ]
-          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault formatPrice "-" <| reducedPrice model ]
+          , H.td [HA.class "text-right"] [ H.text <| mapWithDefault Price.format "-" <| reducedPrice model ]
           ]
         ]
       , H.tfoot []
         [ H.tr []
           [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
-          , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault formatPrice "-" <| fullPrice model ] ]
+          , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault Price.format "-" <| fullPrice model ] ]
           ]
         ]
       ]
