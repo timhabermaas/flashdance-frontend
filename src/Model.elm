@@ -1,4 +1,4 @@
-module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, clearSelections, findSeat) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, selectSeat, unselectSeat, clearSelections, findSeat) where
 import Dict as D
 import List as L
 import String as S
@@ -19,6 +19,20 @@ toggleSelected model seat =
     True -> if | isSelected model seat -> { model | selections <- L.filter ((/=) seat) model.selections }
                | isReserved model seat -> model
                | otherwise -> { model | selections <- seat :: model.selections }
+    False -> model
+
+selectSeat : Model -> Seat -> Model
+selectSeat model seat =
+  case seat.usable of
+    True -> if | isReserved model seat -> model
+               | otherwise -> { model | selections <- seat :: model.selections }
+    False -> model
+
+unselectSeat : Model -> Seat -> Model
+unselectSeat model seat =
+  case seat.usable of
+    True -> if | isReserved model seat -> model
+               | otherwise -> { model | selections <- L.filter ((/=) seat) model.selections }
     False -> model
 
 initialModel : Model

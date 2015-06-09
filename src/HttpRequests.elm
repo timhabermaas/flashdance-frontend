@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat) where
 import Model as M
 import Http
 import Date
@@ -85,6 +85,21 @@ put decoder url body =
   in
       Http.fromJson decoder (Http.send Http.defaultSettings request)
 
+delete : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
+delete decoder url body =
+  let request =
+        { verb = "DELETE"
+        , headers = []
+        , url = url
+        , body = body
+        }
+  in
+      Http.fromJson decoder (Http.send Http.defaultSettings request)
+
 reserveSeat : OrderId -> SeatId -> Task Http.Error String
 reserveSeat orderId seatId =
   put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/reservations/" ++ seatId) (Http.empty)
+
+freeSeat : OrderId -> SeatId -> Task Http.Error String
+freeSeat orderId seatId =
+  delete (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/reservations/" ++ seatId) (Http.empty)

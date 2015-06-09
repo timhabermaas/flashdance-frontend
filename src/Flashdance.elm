@@ -45,6 +45,7 @@ type Action
   | OrderStarted String
   | SeatReserved SeatId
   | SeatSelected SeatId
+  | SeatUnselected SeatId
   | ShowErrorFlashMessage String
 
 type Effect
@@ -52,6 +53,7 @@ type Effect
   | SubmitOrder GigId Name Email (List M.Seat) Int
   | StartOrderRequest Name Email
   | ReserveSeatRequest OrderId SeatId
+  | FreeSeatRequest OrderId SeatId
 
 type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
@@ -68,10 +70,15 @@ update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
     ClickSeat seat -> case model.orderState of
-      Ordering order -> (model, Just (ReserveSeatRequest order.id seat.id))
+      Ordering order ->
+        if M.isSelected model.stand seat then
+          (model, Just (FreeSeatRequest order.id seat.id))
+        else
+          (model, Just (ReserveSeatRequest order.id seat.id))
       _ -> (model, Nothing)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
-    SeatSelected seatId -> ({model | stand <- M.toggleSelected model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
+    SeatSelected seatId -> ({model | stand <- M.selectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
+    SeatUnselected seatId -> ({model | stand <- M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
     SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
@@ -157,8 +164,18 @@ port reserveSeatRequest =
     Just (ReserveSeatRequest orderId seatId) ->
       (HttpRequests.reserveSeat orderId seatId)
       `Task.andThen` (\result -> Signal.send actions.address (SeatSelected seatId))
-      `Task.onError` (\result -> (Signal.send actions.address (ShowErrorFlashMessage "Sitz schon reserviert."))
+      `Task.onError` (\result -> (Signal.send actions.address (ShowErrorFlashMessage "Sitz ist schon reserviert."))
         `Task.andThen` (\foo -> Signal.send actions.address (SeatReserved seatId)))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
+port freeSeatRequest : Signal (Task Http.Error ())
+port freeSeatRequest =
+  let maybeRequest s = case s of
+    Just (FreeSeatRequest orderId seatId) ->
+      (HttpRequests.freeSeat orderId seatId)
+      `Task.andThen` (\result -> Signal.send actions.address (SeatUnselected seatId))
+      `Task.onError` (\result -> (Signal.send actions.address (ShowErrorFlashMessage "Sitz konnte nicht entfernt werden.")))
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
@@ -189,7 +206,7 @@ viewFlashMessage address message =
 
 formatDate : Date.Date -> String
 formatDate d =
-  DF.format "%d.%m.%Y um %H:%M" d
+  DF.format "%d.%m.%Y um %H:%M Uhr" d
 
 view : Address Action -> Model -> H.Html
 view address model =
@@ -229,7 +246,7 @@ view address model =
               [ H.div [HA.class "panel panel-default"]
                 [ H.div [HA.class "panel-heading"]
                   [ H.h3 [HA.class "panel-title"]
-                    [ H.text "Tickets bestellen" ]
+                    [ H.text "Karten bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
                   [ viewOrderPanel address gig model ]
@@ -238,17 +255,16 @@ view address model =
             ]
           ]
 
-viewOrderInfos : Model -> H.Html
-viewOrderInfos model =
-  case model.orderState of
-    Ordering order -> H.h1 [] [ H.text "foo" ]
+viewOrderInfos : OrderInfo -> H.Html
+viewOrderInfos order =
+  H.h1 [] [ H.text <| order.name ++ " ", H.small [] [H.text order.email] ]
 
 viewOrderPanel : Address Action -> Gig -> Model -> H.Html
 viewOrderPanel address gig model =
   case model.orderState of
     Ordering order ->
       H.div []
-        [ viewOrderInfos model
+        [ viewOrderInfos order
         , viewOrderTable model
         ]
     Browsing ->
