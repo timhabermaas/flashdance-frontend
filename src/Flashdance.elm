@@ -205,14 +205,13 @@ viewFlashMessage address message =
       Error m -> alert m "danger"
 
 formatDate : Date.Date -> String
-formatDate d =
-  DF.format "%d.%m.%Y um %H:%M Uhr" d
+formatDate = DF.format "%d.%m.%Y um %H:%M Uhr"
 
 view : Address Action -> Model -> H.Html
 view address model =
   let header = viewFlashMessage address model.flashMessage
-      gigNavItem address gig =
-        H.li [] [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
+      gigNavItem address currentGig gig =
+        H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
 
   in
     case model.page of
@@ -231,7 +230,7 @@ view address model =
             [ header ]
           , H.div [HA.class "row"]
             [ H.nav []
-              [ H.ul [HA.class "pager"] (L.map (gigNavItem address) model.gigs) ]
+              [ H.ul [HA.class "pager"] (L.map (gigNavItem address gig) model.gigs) ]
             ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
