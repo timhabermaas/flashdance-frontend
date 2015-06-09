@@ -1,6 +1,7 @@
 module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat) where
 import Model as M
 import Http
+import Date
 import Task exposing (..)
 import Json.Decode exposing (..)
 import Json.Encode exposing (..)
@@ -12,11 +13,12 @@ baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 type alias GigId = String
 type alias OrderId = String
 type alias SeatId = String
-type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
+type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
+type alias PreParseGig = { id: GigId, date: String, title: String, freeSeats: Int }
 
-gigDecoder : Decoder (List Gig)
+gigDecoder : Decoder (List PreParseGig)
 gigDecoder =
-  Json.Decode.list (object4 Gig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string) ("freeSeats" := Json.Decode.int))
+  Json.Decode.list (object4 PreParseGig ("id" := Json.Decode.string) ("date" := Json.Decode.string) ("title" := Json.Decode.string) ("freeSeats" := Json.Decode.int))
 
 reservationDecoder : Decoder M.Reservation
 reservationDecoder =
@@ -46,9 +48,17 @@ seatsDecoder =
     ("seats" := (Json.Decode.list seatDecoder))
     ("rows" := (Json.Decode.list rowDecoder))
 
+unwrap : Result x y -> y
+unwrap r = case r of
+  Result.Ok s -> s
+
+parseDate : String -> Date.Date
+parseDate s = unwrap <| Date.fromString s
+
 fetchGigs : Task Http.Error (List Gig)
 fetchGigs =
   Http.get gigDecoder (baseApiEndpoint ++ "/gigs")
+  `Task.andThen` (\gigs -> Task.succeed (List.map (\g -> {g | date <- parseDate g.date}) gigs))
 
 fetchSeats : GigId -> Task Http.Error (List M.Seat, List M.Row)
 fetchSeats id =

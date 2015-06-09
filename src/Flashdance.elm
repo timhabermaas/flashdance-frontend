@@ -8,6 +8,8 @@ import Svg.Attributes as SA
 import Signal exposing (Address, Signal)
 import List as L
 import Text
+import Date
+import Date.Format as DF
 import Graphics.Element as Element
 import Graphics.Input.Field as Field
 import Color exposing (..)
@@ -51,21 +53,22 @@ type Effect
   | StartOrderRequest Name Email
   | ReserveSeatRequest OrderId SeatId
 
-type CurrentPage = GigIndex | GigView Gig | RegisterView -- | TransitionTo CurrentPage
+type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
 type FlashMessage = Info String | Error String | Hidden
-type OrderState = Ordering String | Browsing
+type alias OrderInfo = { name: String, email: String, id: OrderId }
+type OrderState = Ordering OrderInfo | Browsing
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
-type alias Gig = { id: GigId, date: String, title: String, freeSeats: Int }
+type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
 type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage }
 
 initialModel : Model
-initialModel = { page = RegisterView, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing }
 
 update : Action -> (Model, Maybe Effect) -> (Model, Maybe Effect)
 update action (model, _) =
   case action of
     ClickSeat seat -> case model.orderState of
-      Ordering orderId -> (model, Just (ReserveSeatRequest orderId seat.id))
+      Ordering order -> (model, Just (ReserveSeatRequest order.id seat.id))
       _ -> (model, Nothing)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatSelected seatId -> ({model | stand <- M.toggleSelected model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
@@ -83,7 +86,7 @@ update action (model, _) =
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
-    OrderStarted orderId -> ({model | page <- GigIndex, orderState <- Ordering orderId}, Nothing)
+    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId}}, Nothing)
     ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
     NoOp -> (model, Nothing)
 
@@ -184,6 +187,10 @@ viewFlashMessage address message =
       Hidden -> empty
       Error m -> alert m "danger"
 
+formatDate : Date.Date -> String
+formatDate d =
+  DF.format "%d.%m.%Y um %H:%M" d
+
 view : Address Action -> Model -> H.Html
 view address model =
   let header = viewFlashMessage address model.flashMessage
@@ -192,11 +199,6 @@ view address model =
 
   in
     case model.page of
-      RegisterView ->
-        H.div [HA.class "container"]
-          [ H.div [HA.class "row"]
-            [ viewRegisterForm address model.formInput ]
-          ]
       GigIndex ->
         H.div [HA.class "container"]
           [ H.div [HA.class "row"]
@@ -216,7 +218,7 @@ view address model =
             ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
-              [ H.h1 [] [H.text "Gig"] ]
+              [ H.h1 [] [H.text <| gig.title ++ " ", H.small [] [H.text <| formatDate gig.date]] ]
             ]
           , H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
@@ -230,17 +232,7 @@ view address model =
                     [ H.text "Tickets bestellen" ]
                   ]
                 , H.div [HA.class "panel-body"]
-                  [ H.div [HA.class "row"]
-                    [ H.div [HA.class "col-md-6"]
-                      [ viewOrderInfos model
-                      , H.h2 [] [ H.text "Reservierte Plätze" ]
-                      , H.text <| M.selectionsAsText model.stand.selections
-                      , viewOrderTable model
-                      ]
-                    , H.div [HA.class "col-md-6"]
-                      [ viewTicketOrderForm gig address model.formInput model.stand.selections ]
-                    ]
-                  ]
+                  [ viewOrderPanel address gig model ]
                 ]
               ]
             ]
@@ -249,12 +241,22 @@ view address model =
 viewOrderInfos : Model -> H.Html
 viewOrderInfos model =
   case model.orderState of
-    Ordering orderId -> H.h1 [] [ H.text <| "foo" ++ orderId ]
-    Browsing -> H.h1 [] [ H.text "browsing" ]
+    Ordering order -> H.h1 [] [ H.text "foo" ]
 
-unwrap : Result x y -> y
-unwrap r = case r of
-  Result.Ok s -> s
+viewOrderPanel : Address Action -> Gig -> Model -> H.Html
+viewOrderPanel address gig model =
+  case model.orderState of
+    Ordering order ->
+      H.div []
+        [ viewOrderInfos model
+        , viewOrderTable model
+        ]
+    Browsing ->
+      H.div [HA.class "row"]
+        [ H.div [HA.class "col-md-12"]
+          [ viewRegisterForm address model.formInput ]
+        ]
+
 
 unwrapMaybe : Maybe x -> x
 unwrapMaybe m =
