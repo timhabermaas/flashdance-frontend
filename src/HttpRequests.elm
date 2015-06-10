@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress) where
 import Model as M
 import Http
 import Date
@@ -73,6 +73,20 @@ submitOrder gigId name email seatIds reducedCount =
 startOrder : String -> String -> Task Http.Error String
 startOrder name email =
   Http.post (Json.Decode.at ["orderId"] Json.Decode.string) (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
+
+finishOrderEncoder : Int -> String -> String
+finishOrderEncoder reducedCount type' = Json.Encode.encode 0 (object [("reducedCount", Json.Encode.int reducedCount), ("type", Json.Encode.string type')])
+
+finishOrder : String -> Int -> String -> Task Http.Error String
+finishOrder orderId reducedCount type' =
+  put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/finish") (Http.string <| finishOrderEncoder reducedCount type')
+
+finishOrderWithAddressEncoder : Int -> String -> String -> String -> String
+finishOrderWithAddressEncoder reducedCount street postalCode city = Json.Encode.encode 0 (object [("reducedCount", Json.Encode.int reducedCount), ("address", object [("street", Json.Encode.string street), ("postalCode", Json.Encode.string postalCode), ("city", Json.Encode.string city)])])
+
+finishOrderWithAddress : String -> Int -> String -> String -> String -> Task Http.Error String
+finishOrderWithAddress orderId reducedCount street postalCode city =
+  put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/finish") (Http.string <| finishOrderWithAddressEncoder reducedCount street postalCode city)
 
 put : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
 put decoder url body =

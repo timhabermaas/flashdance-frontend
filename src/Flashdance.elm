@@ -26,6 +26,8 @@ type alias Email = String
 
 type Action
   = NoOp
+  | OrderSucceeded
+  | ResetApp
   | ClickSeat M.Seat
   | SeatsReceived (List M.Seat, List M.Row)
   | GigsReceived (List Gig)
@@ -47,7 +49,7 @@ type Action
   | SeatUnselected SeatId
   | ShowErrorFlashMessage String
   | UpdateDeliveryOption DeliveryOption
-  | FinishOrderTicket OrderId String -- TODO this should be an integer
+  | FinishOrderTicket OrderId String
 
 type Effect
   = FetchSeats GigId
@@ -55,13 +57,14 @@ type Effect
   | StartOrderRequest Name Email
   | ReserveSeatRequest OrderId SeatId
   | FreeSeatRequest OrderId SeatId
-  | FinishOrderRequest OrderId OrderInfo
+  | FinishOrderRequest OrderId DeliveryOption Int String
+  | FinishOrderWithAddressRequest OrderId Int Address'
 
 type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
-type FlashMessage = Info String | Error String | Hidden
+type FlashMessage = Success String | Info String | Error String | Hidden
 type DeliveryOption = PickUpBoxOffice | PickUpBeforehand | Delivery Address'
-type alias OrderInfo = { name: String, email: String, id: OrderId, deliveryOption: Maybe DeliveryOption }
-type OrderState = Ordering OrderInfo | Browsing
+type alias OrderInfo = { name: String, email: String, id: OrderId, deliveryOption: DeliveryOption }
+type OrderState = Ordering OrderInfo | Browsing | Ordered OrderInfo
 type alias Address' = { street: String, postalCode: String, city: String }
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
@@ -78,16 +81,26 @@ updateAddress model address =
   case model.orderState of
     Ordering order ->
       case order.deliveryOption of
-        Just (Delivery a) -> {model | orderState <- Ordering ({order | deliveryOption <- Just (Delivery address)})}
+        Delivery a -> {model | orderState <- Ordering ({order | deliveryOption <- Delivery address})}
         _ -> model
     _ -> model
+
+forcefullyExtractDeliveryOption : Model -> DeliveryOption
+forcefullyExtractDeliveryOption model =
+  case model.orderState of
+    Ordering order -> order.deliveryOption
+
+forcefullyExtractOrderInfo : Model -> OrderInfo
+forcefullyExtractOrderInfo model =
+  case model.orderState of
+    Ordering order -> order
 
 forcefullyExtractAddress : Model -> Address'
 forcefullyExtractAddress model =
   case model.orderState of
     Ordering order ->
       case order.deliveryOption of
-        Just (Delivery a) -> a
+        Delivery a -> a
 
 updateCity : Address' -> String -> Address'
 updateCity a c = {a | city <- c}
@@ -108,6 +121,8 @@ update action (model, _) =
         else
           (model, Just (ReserveSeatRequest order.id seat.id))
       _ -> (model, Nothing)
+    OrderSucceeded -> ({model | orderState <- Ordered (forcefullyExtractOrderInfo model)}, Nothing)
+    ResetApp -> ({model | orderState <- Browsing, stand <- M.clearSelections <| M.reserveSeats model.stand model.stand.selections, flashMessage <- Hidden, formInput <- { name = "", email = "", reduced = "0"}, innerFlashMessage <- Hidden}, Nothing)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatSelected seatId -> ({model | stand <- M.selectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
     SeatUnselected seatId -> ({model | stand <- M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
@@ -124,7 +139,7 @@ update action (model, _) =
     UpdateDeliveryOption option ->
       case model.orderState of
         Browsing -> (model, Nothing)
-        Ordering order -> ({model | orderState <- Ordering ({name = order.name, email = order.email, id = order.id, deliveryOption = Just option})}, Nothing)
+        Ordering order -> ({model | orderState <- Ordering ({name = order.name, email = order.email, id = order.id, deliveryOption = option})}, Nothing)
     UpdateReducedCount reduced ->
       if reducedCountValid reduced then
         -- TODO needs more sophistacted approach, we reset the error field even if there might still be errors
@@ -137,7 +152,14 @@ update action (model, _) =
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
-    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = Nothing}}, Nothing)
+    FinishOrderTicket orderId reducedCountAsString ->
+      let request =
+            case (forcefullyExtractDeliveryOption model) of
+              Delivery _ -> FinishOrderWithAddressRequest orderId (unwrapMaybe <| reducedCount model) (forcefullyExtractAddress model)
+              _ -> FinishOrderRequest orderId (forcefullyExtractDeliveryOption model) (unwrapMaybe <| reducedCount model) (typeFromDeliveryOption (forcefullyExtractDeliveryOption model))
+      in
+        (model, Just <| request)
+    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = PickUpBoxOffice}}, Nothing)
     ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
     NoOp -> (model, Nothing)
 
@@ -202,6 +224,26 @@ port orderStartRequest =
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
+
+typeFromDeliveryOption : DeliveryOption -> String
+typeFromDeliveryOption do =
+  case do of
+    PickUpBeforehand -> "pickUpBeforehand"
+    PickUpBoxOffice -> "pickUpBoxOffice"
+
+port finishOrderRequest : Signal (Task Http.Error ())
+port finishOrderRequest =
+  let maybeRequest s = case s of
+        Just (FinishOrderRequest orderId deliveryOption reducedCount type') ->
+          (HttpRequests.finishOrder orderId reducedCount (typeFromDeliveryOption deliveryOption))
+          `Task.andThen` (\_ -> Signal.send actions.address OrderSucceeded)
+        Just (FinishOrderWithAddressRequest orderId reducedCount address) ->
+          (HttpRequests.finishOrderWithAddress orderId reducedCount address.street address.postalCode address.city)
+          `Task.andThen` (\_ -> Signal.send actions.address OrderSucceeded)
+        _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
+
 port reserveSeatRequest : Signal (Task Http.Error ())
 port reserveSeatRequest =
   let maybeRequest s = case s of
@@ -247,6 +289,8 @@ viewFlashMessage address action message =
     case message of
       Hidden -> empty
       Error m -> alert m "danger"
+      Success m -> alert m "success"
+      Info m -> alert m "info"
 
 formatDate : Date.Date -> String
 formatDate = DF.format "%d.%m.%Y um %H:%M Uhr"
@@ -311,7 +355,7 @@ viewOrderFinishForm address order model =
         case model.orderState of
           Ordering order ->
             case order.deliveryOption of
-              Just (Delivery a) ->
+              Delivery a ->
                 H.div []
                   [ H.div [HA.class "row"]
                     [ H.div [HA.class "col-md-12"]
@@ -347,6 +391,14 @@ viewOrderFinishForm address order model =
         ]
       ]
 
+isDelivery : DeliveryOption -> Bool
+isDelivery do =
+  case do of
+    Delivery _ -> True
+    _ -> False
+
+
+
 viewOrderPanel : Address Action -> Gig -> Model -> H.Html
 viewOrderPanel address gig model =
   case model.orderState of
@@ -360,6 +412,15 @@ viewOrderPanel address gig model =
       H.div [HA.class "row"]
         [ H.div [HA.class "col-md-12"]
           [ viewRegisterForm address model.formInput ]
+        ]
+    Ordered order ->
+      H.div [HA.class "row"]
+        [ H.div [HA.class "col-md-12"]
+          [ viewFlashMessage address NoOp (Success "Karten erfolgreich bestellt.")
+          , H.button [HE.onClick address ResetApp, HA.class "btn btn-primary"]
+            [ H.text "Weitere Karten bestellen"
+            ]
+          ]
         ]
 
 
@@ -402,7 +463,7 @@ deliveryCosts model =
   case model.orderState of
     Ordering order ->
       case order.deliveryOption of
-        Just (Delivery _) -> Price.fromInt 300
+        Delivery _ -> Price.fromInt 300
         _ -> Price.fromInt 0
     _ -> Price.fromInt 0
 
@@ -421,7 +482,7 @@ viewOrderTable model =
   let optionalDeliveryCosts = case model.orderState of
     Ordering order ->
       case order.deliveryOption of
-        Just (Delivery _) ->
+        Delivery _ ->
           [ H.tr []
             [ H.td [] [ H.text "Versandkosten" ]
             , H.td [HA.class "text-right"] [ H.text <| Price.format <| deliveryCosts model]
