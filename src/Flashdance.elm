@@ -561,14 +561,14 @@ drawRow : Address Action -> M.Model -> M.Row -> S.Svg
 drawRow address model row = S.g [SA.transform <| "translate(0," ++ (toString <| row.y * 25) ++ ")"]
   [ S.g [SA.transform "translate(20, 0)"] (L.map (drawSeat address model row.number) (M.seatsInRow model row))
   , S.text [SA.x "5", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
-  , S.text [SA.x "1023", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
+  , S.text [SA.x "880", SA.y "14", SA.textAnchor "end"] [ H.text <| toString row.number]
   ]
 
 
 drawStand : Address Action -> M.Model -> H.Html
 drawStand address model =
-  S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "500", SA.width "1050"]
+  S.svg [SA.version "1.1", SA.x "0", SA.y "0", SA.height "500", SA.width "910", SA.style "display: block; margin: 0 auto;"]
     [ S.g [SA.transform "translate(18, 1)"] (L.map (drawRow address model) (M.rows model))
-    , S.line [SA.x1 "182", SA.y1 "450", SA.x2 "885", SA.y2 "450", SA.style "stroke:rgb(0,0,0);stroke-width:2"] []
-    , S.text [SA.x "510", SA.y "475", SA.style "font-size: 16px"] [H.text "BÜHNE"]
+    , S.line [SA.x1 "200", SA.y1 "450", SA.x2 "750", SA.y2 "450", SA.style "stroke:rgb(0,0,0);stroke-width:2"] []
+    , S.text [SA.x "475", SA.y "475", SA.textAnchor "middle", SA.style "font-size: 16px"] [H.text "BÜHNE"]
     ]
