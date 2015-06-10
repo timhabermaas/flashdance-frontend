@@ -385,7 +385,7 @@ reducedPrice model =
 
 fullPrice : Model -> Maybe Price.Price
 fullPrice model =
-  Maybe.map (\n -> Price.fromInt (n * 1500)) <| fullCount model
+  Maybe.map (\n -> Price.fromInt (n * 1600)) <| fullCount model
 
 addPrice : Price.Price -> Price.Price -> Price.Price
 addPrice = Price.add
