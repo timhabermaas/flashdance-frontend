@@ -264,7 +264,7 @@ view address model =
         H.div [HA.class "container"]
           [ H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
-              [ H.h1 [] [H.text "Aufführungen"]
+              [ H.h1 [] [H.text "FLASHDANCE – The Musical | Tickets"]
               , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
               ]
             ]
