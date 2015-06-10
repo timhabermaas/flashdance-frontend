@@ -540,7 +540,7 @@ radioInputs address action name labels checked =
             ]
           ]
       labelFor option = case option of
-        PickUpBeforehand -> "Abholung vorab an der HGR"
+        PickUpBeforehand -> "Abholung vorab an der HGR (Mo. – Fr., 13.00 – 14.30 Uhr, Raum 234)"
         PickUpBoxOffice -> "Abholung an der Abendkasse"
         Delivery _ -> "Karten per Post zusenden lassen (Aufpreis von € 3,-)"
   in
