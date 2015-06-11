@@ -270,7 +270,7 @@ drawGigEntry : Address Action -> Gig -> H.Html
 drawGigEntry address gig =
   H.li []
     [ H.a [HA.href "#", HE.onClick address (ClickGig gig)]
-      [ H.text gig.title
+      [ H.text <| gig.title ++ " "
       , H.span [HA.class "badge"]
         [ H.text <| (toString gig.freeSeats) ++ " freie Plätze" ]
       ]
@@ -309,9 +309,24 @@ view address model =
           [ H.div [HA.class "row"]
             [ H.div [HA.class "col-md-12"]
               [ H.h1 [] [H.text "FLASHDANCE – The Musical | Tickets"]
-              , H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
+              , H.br [] []
+              , H.p []
+                [ H.text "Herzlich Willkommen beim Online-Ticketservice der HGR Musical AG!"
+                , H.br [] []
+                , H.text "Bitte wählen Sie einen Veranstaltungstag, um zu beginnen."
+                ]
               ]
             ]
+          , H.br [] []
+          , H.div [HA.class "row"]
+            [ H.div [HA.class "col-md-4"]
+              [ H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
+              ]
+            , H.div [HA.class "col-md-8"]
+              [ H.img [HA.src "logo.png"] []
+              ]
+            ]
+
           ]
       GigView gig ->
         H.div [HA.class "container"]
@@ -359,7 +374,7 @@ viewOrderFinishForm address order model =
                 H.div []
                   [ H.div [HA.class "row"]
                     [ H.div [HA.class "col-md-12"]
-                      [ textInput address UpdateStreet "street" "Strasse" a.street
+                      [ textInput address UpdateStreet "street" "Straße" a.street
                       ]
                     ]
                   , H.div [HA.class "row"]
@@ -405,13 +420,29 @@ viewOrderPanel address gig model =
     Ordering order ->
       H.div []
         [ viewOrderInfos order
+        , H.div []
+          [ H.br [] []
+          , H.p []
+            [ H.text "Nachdem Sie alle Sitzplätze ausgewählt und die Anzahl der ermäßigten Karten (Schüler und Studenten mit gültigem Ausweis) angegeben haben,
+klicken Sie zum Abschließen Ihrer Bestellung auf „Absenden“. Sie erhalten dann in Kürze eine Bestätigungs-E-Mail mit den Zahlungsinformationen."
+            ]
+          , H.br [] []
+          ]
         , viewOrderTable model
         , viewOrderFinishForm address order model
         ]
     Browsing ->
       H.div [HA.class "row"]
         [ H.div [HA.class "col-md-12"]
-          [ viewRegisterForm address model.formInput ]
+          [ H.p []
+            [ H.br [] []
+            , H.text "Bitte geben Sie Ihren Namen und eine gültige E-Mail-Adresse ein, um Sitzplätze per Mausklick auszuwählen."
+            , H.br [] []
+            , H.text "Nachdem Sie sich angemeldet haben, können Sie zudem weitere Veranstaltungstage zu Ihrer Bestellung hinzufügen."
+            ]
+          , H.br [] []
+          , viewRegisterForm address model.formInput
+          ]
         ]
     Ordered order ->
       H.div [HA.class "row"]
