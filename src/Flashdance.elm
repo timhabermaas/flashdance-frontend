@@ -295,7 +295,7 @@ drawGigEntry : Address Action -> Gig -> H.Html
 drawGigEntry address gig =
   H.li []
     [ H.a [HA.href "#", HE.onClick address (ClickGig gig)]
-      [ H.text <| gig.title ++ " "
+      [ H.text <| (formatDate gig.date) ++ " "
       , H.span [HA.class "badge"]
         [ H.text <| (toString gig.freeSeats) ++ " freie Plätze" ]
       ]
@@ -317,15 +317,22 @@ viewFlashMessage address action message =
       Success m -> alert m "success"
       Info m -> alert m "info"
 
+formatDateTime : Date.Date -> String
+formatDateTime = DF.format "%d.%m.%Y um %H:%M Uhr"
+
 formatDate : Date.Date -> String
-formatDate = DF.format "%d.%m.%Y um %H:%M Uhr"
+formatDate date =
+  let monthName = "Juli"
+      day = DF.format "%d"
+      year = DF.format "%Y"
+  in  (day date) ++ ". " ++ monthName ++ " " ++ (year date)
 
 view : Address Action -> Model -> H.Html
 view address model =
   let header = viewFlashMessage address CloseFlashMessage model.flashMessage
       innerHeader = viewFlashMessage address CloseFlashMessage model.innerFlashMessage
       gigNavItem address currentGig gig =
-        H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
+        H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text (formatDate gig.date) ] ]
       body model =
         case model.page of
           GigIndex ->
@@ -359,7 +366,7 @@ view address model =
               ]
             , H.div [HA.class "row"]
               [ H.div [HA.class "col-md-12"]
-                [ H.h1 [] [H.text <| gig.title ++ " ", H.small [] [H.text <| formatDate gig.date]] ]
+                [ H.h1 [] [H.text <| gig.title ++ " ", H.small [] [H.text <| formatDateTime gig.date]] ]
               ]
             , H.div [HA.class "row"]
               [ H.div [HA.class "col-md-12"]
