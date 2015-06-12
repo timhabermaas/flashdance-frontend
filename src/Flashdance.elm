@@ -161,7 +161,7 @@ update action (model, _) =
         Browsing -> (model, Nothing)
         Ordering order -> ({model | orderState <- Ordering ({name = order.name, email = order.email, id = order.id, deliveryOption = option})}, Nothing)
     UpdateReducedCount reduced ->
-      if reducedCountValid reduced then
+      if reducedCountValid reduced (List.length model.stand.selections) then
         -- TODO needs more sophistacted approach, we reset the error field even if there might still be errors
         ({model | innerFlashMessage <- Hidden, formInput <- {name = model.formInput.name, email = model.formInput.email, reduced = reduced}}, Nothing)
       else
@@ -175,7 +175,7 @@ update action (model, _) =
       if startOrderValid model name email then
         (model, Just <| StartOrderRequest name email)
       else
-        ({ model | innerFlashMessage <- Error "Name oder E-Mail nicht korrekt."}, Nothing)
+        ({ model | innerFlashMessage <- Error "Name oder E-Mail nicht vorhanden."}, Nothing)
 
     FinishOrderTicket orderId reducedCountAsString ->
       let request =
@@ -595,7 +595,7 @@ viewOrderFinishForm address order model =
         ]
       , H.div [HA.class "row"]
         [ H.div [HA.class "col-md-12"]
-          [ H.button [HE.onClick address (FinishOrderTicket order.id model.formInput.reduced), HA.class "btn btn-primary"]
+          [ H.button [HA.disabled <| not (reducedCountValid model.formInput.reduced (List.length model.stand.selections)), HE.onClick address (FinishOrderTicket order.id model.formInput.reduced), HA.class "btn btn-primary"]
             [ H.text "Bestellen"
             ]
           ]
@@ -660,8 +660,11 @@ reducedCount : Model -> Maybe Int
 reducedCount model =
   Result.toMaybe <| String.toInt model.formInput.reduced
 
-reducedCountValid : String -> Bool
-reducedCountValid = isJust << Result.toMaybe << String.toInt
+reducedCountValid : String -> Int -> Bool
+reducedCountValid reduced totalCount =
+  case String.toInt reduced of
+    Ok x -> totalCount - x >= 0 && x >= 0 && totalCount > 0
+    Err _ -> False
 
 fullCount : Model -> Maybe Int
 fullCount model =
@@ -779,20 +782,8 @@ viewRegisterForm address form =
   H.div []
     [ textInput address UpdateName "name" "Name" form.name,
       emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
-      H.button [HE.onClick address (StartOrder form.name form.email), HA.class "btn btn-default"]
+      H.button [HE.onClick address (StartOrder form.name form.email), HA.class "btn btn-primary"]
         [ H.text "Anmelden"
-        ]
-    ]
-
--- TODO remove selections by sliming down `OrderTicket`
-viewTicketOrderForm : Gig -> Address Action -> CurrentFormInput -> (List M.Seat) -> H.Html
-viewTicketOrderForm gig address form selections =
-  H.div []
-    [ textInput address UpdateName "name" "Name" form.name,
-      emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
-      numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten" form.reduced,
-      H.button [HE.onClick address (OrderTicket gig form.name form.email selections form.reduced), HA.class "btn btn-default"]
-        [ H.text "Bestellen"
         ]
     ]
 
