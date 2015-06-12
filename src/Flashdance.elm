@@ -481,6 +481,12 @@ view address model =
                 [ H.img [HA.src "logo.png"] []
                 ]
               ]
+            , H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-12"]
+                [ H.br [] []
+                , H.p [] [H.text "What a feeling: Wir haben unsere Zuschauertribüne überarbeitet und bieten ab sofort mehr 20% mehr Sitzfreiheit je Platz!"]
+                ]
+              ]
             ]
           GigView gig ->
             [ H.div [HA.class "row"]
@@ -845,7 +851,7 @@ radioInputs address action name labels checked =
 viewRegisterForm : Address Action -> CurrentFormInput -> H.Html
 viewRegisterForm address form =
   H.div []
-    [ textInput address UpdateName "name" "Name" form.name,
+    [ textInput address UpdateName "name" "Name, Vorname" form.name,
       emailInput address UpdateEmail "email" "E-Mail-Adresse" form.email,
       H.button [HE.onClick address (StartOrder form.name form.email), HA.class "btn btn-primary"]
         [ H.text "Anmelden"
