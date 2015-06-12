@@ -52,15 +52,15 @@ dateDecoder = Json.Decode.customDecoder Json.Decode.string Date.fromString
 
 fetchGigs : Task Http.Error (List Gig)
 fetchGigs =
-  Http.get gigDecoder (baseApiEndpoint ++ "/gigs")
+  get gigDecoder (baseApiEndpoint ++ "/gigs")
 
 fetchSeats : GigId -> Task Http.Error (List M.Seat, List M.Row)
 fetchSeats id =
-  Http.get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")
+  get seatsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/seats")
 
 fetchReservations : GigId -> Task Http.Error (List M.Reservation)
 fetchReservations id =
-  Http.get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")
+  get reservationsDecoder (baseApiEndpoint ++ "/gigs/" ++ id ++ "/reservations")
 
 
 orderEncoder : String -> String -> (List String) -> Int -> String
@@ -68,11 +68,11 @@ orderEncoder name email seatIds reducedCount = Json.Encode.encode 0 (object [("n
 
 submitOrder : String -> String -> String -> List String -> Int -> Task Http.Error String
 submitOrder gigId name email seatIds reducedCount =
-  Http.post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds reducedCount))
+  post (Json.Decode.succeed "") (baseApiEndpoint ++ "/gigs/" ++ gigId ++ "/orders") (Http.string (orderEncoder name email seatIds reducedCount))
 
 startOrder : String -> String -> Task Http.Error String
 startOrder name email =
-  Http.post (Json.Decode.at ["orderId"] Json.Decode.string) (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
+  post (Json.Decode.at ["orderId"] Json.Decode.string) (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
 
 finishOrderEncoder : Int -> String -> String
 finishOrderEncoder reducedCount type' = Json.Encode.encode 0 (object [("reducedCount", Json.Encode.int reducedCount), ("type", Json.Encode.string type')])
@@ -88,29 +88,23 @@ finishOrderWithAddress : String -> Int -> String -> String -> String -> Task Htt
 finishOrderWithAddress orderId reducedCount street postalCode city =
   put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/finish") (Http.string <| finishOrderWithAddressEncoder reducedCount street postalCode city)
 
-post = Http.post
-
-put : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
-put decoder url body =
-  let request =
-        { verb = "PUT"
-        , headers = []
+requestWithCredentials : String -> String -> String -> Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
+requestWithCredentials user pw verb decoder url body =
+  let headers = if user /= "" then [("X-User", user), ("X-Password", pw)] else []
+      request =
+        { verb = verb
+        , headers = headers
         , url = url
         , body = body
         }
   in
       Http.fromJson decoder (Http.send Http.defaultSettings request)
 
-delete : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
-delete decoder url body =
-  let request =
-        { verb = "DELETE"
-        , headers = []
-        , url = url
-        , body = body
-        }
-  in
-      Http.fromJson decoder (Http.send Http.defaultSettings request)
+post    = requestWithCredentials "" "" "POST"
+put     = requestWithCredentials "" "" "PUT"
+delete  = requestWithCredentials "" "" "DELETE"
+get decoder url = requestWithCredentials "" "" "GET" decoder url (Http.empty)
+
 
 reserveSeat : OrderId -> SeatId -> Task Http.Error String
 reserveSeat orderId seatId =
