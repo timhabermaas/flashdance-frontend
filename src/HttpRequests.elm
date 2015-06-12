@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login) where
 import Model as M
 import Http
 import Date
@@ -88,6 +88,8 @@ finishOrderWithAddress : String -> Int -> String -> String -> String -> Task Htt
 finishOrderWithAddress orderId reducedCount street postalCode city =
   put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/finish") (Http.string <| finishOrderWithAddressEncoder reducedCount street postalCode city)
 
+post = Http.post
+
 put : Json.Decode.Decoder value -> String -> Http.Body -> Task Http.Error value
 put decoder url body =
   let request =
@@ -117,3 +119,7 @@ reserveSeat orderId seatId =
 freeSeat : OrderId -> SeatId -> Task Http.Error String
 freeSeat orderId seatId =
   delete (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/reservations/" ++ seatId) (Http.empty)
+
+login : String -> String -> Task Http.Error String
+login user password =
+  post (Json.Decode.at ["role"] Json.Decode.string) (baseApiEndpoint ++ "/login") (Http.string (Json.Encode.encode 0 (object [("user", Json.Encode.string user), ("password", Json.Encode.string password)])))

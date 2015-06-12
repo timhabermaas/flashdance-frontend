@@ -50,6 +50,12 @@ type Action
   | ShowErrorFlashMessage String
   | UpdateDeliveryOption DeliveryOption
   | FinishOrderTicket OrderId String
+  | ClickAdmin
+  | UpdateLoginPassword String
+  | UpdateLoginName String
+  | Login Credentials
+  | LoginAsUserSucceeded Credentials
+  | LoginAsAdminSucceeded Credentials
 
 type Effect
   = FetchSeats GigId
@@ -59,8 +65,9 @@ type Effect
   | FreeSeatRequest OrderId SeatId
   | FinishOrderRequest OrderId DeliveryOption Int String
   | FinishOrderWithAddressRequest OrderId Int Address'
+  | LoginRequest Credentials
 
-type CurrentPage = GigIndex | GigView Gig -- | TransitionTo CurrentPage
+type CurrentPage = GigIndex | GigView Gig
 type FlashMessage = Success String | Info String | Error String | Hidden
 type DeliveryOption = PickUpBoxOffice | PickUpBeforehand | Delivery Address'
 type alias OrderInfo = { name: String, email: String, id: OrderId, deliveryOption: DeliveryOption }
@@ -68,13 +75,15 @@ type OrderState = Ordering OrderInfo | Browsing | Ordered OrderInfo
 type alias Address' = { street: String, postalCode: String, city: String }
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage }
+type alias Credentials = { name: String, password: String }
+type Session = Anonymous | User Credentials | Admin Credentials
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage, loginFields: Maybe Credentials, session: Session}
 
 emptyAddress : Address'
 emptyAddress = { street = "", postalCode = "", city = "" }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden, loginFields = Nothing, session = Anonymous}
 
 updateAddress : Model -> Address' -> Model
 updateAddress model address =
@@ -161,6 +170,12 @@ update action (model, _) =
         (model, Just <| request)
     OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = PickUpBoxOffice}}, Nothing)
     ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
+    ClickAdmin -> ({model | loginFields <- Just {name = "", password = ""}}, Nothing)
+    UpdateLoginName name -> ({model | loginFields <- Just {name = name, password = .password <| unwrapMaybe model.loginFields}}, Nothing)
+    UpdateLoginPassword pw -> ({model | loginFields <- Just {name = .name <| unwrapMaybe model.loginFields, password = pw}}, Nothing)
+    Login credentials -> (model, Just <| LoginRequest credentials)
+    LoginAsUserSucceeded credentials -> ({model | session <- User credentials}, Nothing)
+    LoginAsAdminSucceeded credentials -> ({model | session <- Admin credentials}, Nothing)
     NoOp -> (model, Nothing)
 
 
@@ -265,6 +280,16 @@ port freeSeatRequest =
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
+port loginRequest : Signal (Task Http.Error ())
+port loginRequest =
+  let maybeRequest s = case s of
+    Just (LoginRequest credentials) ->
+      (HttpRequests.login credentials.name credentials.password)
+      `Task.andThen` (\result -> Signal.send actions.address (if result == "admin" then LoginAsAdminSucceeded credentials else LoginAsUserSucceeded credentials))
+      --`Task.onError` (\result -> (Signal.send actions.address (ShowErrorFlashMessage "Sitz konnte nicht entfernt werden.")))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
 
 drawGigEntry : Address Action -> Gig -> H.Html
 drawGigEntry address gig =
@@ -301,64 +326,96 @@ view address model =
       innerHeader = viewFlashMessage address CloseFlashMessage model.innerFlashMessage
       gigNavItem address currentGig gig =
         H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text gig.title ] ]
+      body model =
+        case model.page of
+          GigIndex ->
+            [ H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-12"]
+                [ H.h1 [] [H.text "FLASHDANCE – The Musical | Tickets"]
+                , H.br [] []
+                , H.p []
+                  [ H.text "Herzlich Willkommen beim Online-Ticketservice der HGR Musical AG!"
+                  , H.br [] []
+                  , H.text "Bitte wählen Sie einen Veranstaltungstag, um zu beginnen."
+                  ]
+                ]
+              ]
+            , H.br [] []
+            , H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-4"]
+                [ H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
+                ]
+              , H.div [HA.class "col-md-8"]
+                [ H.img [HA.src "logo.png"] []
+                ]
+              ]
+            ]
+          GigView gig ->
+            [ H.div [HA.class "row"]
+              [ header ]
+            , H.div [HA.class "row"]
+              [ H.nav []
+                [ H.ul [HA.class "pager"] (L.map (gigNavItem address gig) model.gigs) ]
+              ]
+            , H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-12"]
+                [ H.h1 [] [H.text <| gig.title ++ " ", H.small [] [H.text <| formatDate gig.date]] ]
+              ]
+            , H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-12"]
+                [ drawStand address model.stand ]
+              ]
+            , H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-12"]
+                [ H.div [HA.class "panel panel-default"]
+                  [ H.div [HA.class "panel-heading"]
+                    [ H.h3 [HA.class "panel-title"]
+                      [ H.text "Karten bestellen" ]
+                    ]
+                  , H.div [HA.class "panel-body"]
+                    [ innerHeader
+                    , viewOrderPanel address gig model
+                    ]
+                  ]
+                ]
+              ]
+            ]
+      loginForm model =
+        case model.session of
+          Anonymous ->
+            case model.loginFields of
+              Nothing ->
+                H.form [HA.class "nav navbar-form navbar-right"]
+                [ H.button [HE.onClick address ClickAdmin, HA.type' "button", HA.class "btn btn-default"] [H.text "Admin"]
+                ]
+              Just fields ->
+                H.form [HA.class "navbar-form navbar-right"]
+                [ textInput address UpdateLoginName "user" "Username" fields.name
+                , passwordInput address UpdateLoginPassword "password" "Passwort" fields.password
+                , H.button [HE.onClick address (Login fields), HA.type' "button", HA.class "btn btn-primary"] [H.text "Login"]
+                ]
+          Admin credentials ->
+            H.p [HA.class "navbar-text navbar-right"]
+            [ H.text "Eingeloggt als Admin" ]
+          User credentials ->
+            H.p [HA.class "navbar-text navbar-right"]
+            [ H.text "Eingeloggt als Benutzer" ]
+
+      nav model =
+        H.nav [HA.class "navbar navbar-default"]
+        [ H.div [HA.class "container-fluid"]
+          [ H.div [HA.class "navbar-header"]
+            [ H.a [HA.class "navbar-brand"] [H.text "FLASHDANCE"]
+            ]
+          , H.div [HA.class "collapse navbar-collapse"]
+            [ loginForm model
+            ]
+          ]
+        ]
 
   in
-    case model.page of
-      GigIndex ->
-        H.div [HA.class "container"]
-          [ H.div [HA.class "row"]
-            [ H.div [HA.class "col-md-12"]
-              [ H.h1 [] [H.text "FLASHDANCE – The Musical | Tickets"]
-              , H.br [] []
-              , H.p []
-                [ H.text "Herzlich Willkommen beim Online-Ticketservice der HGR Musical AG!"
-                , H.br [] []
-                , H.text "Bitte wählen Sie einen Veranstaltungstag, um zu beginnen."
-                ]
-              ]
-            ]
-          , H.br [] []
-          , H.div [HA.class "row"]
-            [ H.div [HA.class "col-md-4"]
-              [ H.ul [HA.class "nav nav-pills nav-stacked"] (L.map (drawGigEntry address) model.gigs)
-              ]
-            , H.div [HA.class "col-md-8"]
-              [ H.img [HA.src "logo.png"] []
-              ]
-            ]
+     H.div [HA.class "container"] ([nav model] ++ (body model))
 
-          ]
-      GigView gig ->
-        H.div [HA.class "container"]
-          [ H.div [HA.class "row"]
-            [ header ]
-          , H.div [HA.class "row"]
-            [ H.nav []
-              [ H.ul [HA.class "pager"] (L.map (gigNavItem address gig) model.gigs) ]
-            ]
-          , H.div [HA.class "row"]
-            [ H.div [HA.class "col-md-12"]
-              [ H.h1 [] [H.text <| gig.title ++ " ", H.small [] [H.text <| formatDate gig.date]] ]
-            ]
-          , H.div [HA.class "row"]
-            [ H.div [HA.class "col-md-12"]
-              [ drawStand address model.stand ]
-            ]
-          , H.div [HA.class "row"]
-            [ H.div [HA.class "col-md-12"]
-              [ H.div [HA.class "panel panel-default"]
-                [ H.div [HA.class "panel-heading"]
-                  [ H.h3 [HA.class "panel-title"]
-                    [ H.text "Karten bestellen" ]
-                  ]
-                , H.div [HA.class "panel-body"]
-                  [ innerHeader
-                  , viewOrderPanel address gig model
-                  ]
-                ]
-              ]
-            ]
-          ]
 
 viewOrderInfos : OrderInfo -> H.Html
 viewOrderInfos order =
@@ -558,6 +615,7 @@ formInput type' address action name text value =
   ]
 
 textInput = formInput "text"
+passwordInput = formInput "password"
 emailInput = formInput "email"
 numberInput = formInput "number"
 
