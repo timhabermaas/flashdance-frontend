@@ -171,7 +171,12 @@ update action (model, _) =
     UpdatePostalCode pc -> (updateAddress model (updatePostalCode (forcefullyExtractAddress model) pc), Nothing)
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
-    StartOrder name email -> (model, Just <| StartOrderRequest name email) -- TODO send request to server
+    StartOrder name email ->
+      if startOrderValid model name email then
+        (model, Just <| StartOrderRequest name email)
+      else
+        ({ model | innerFlashMessage <- Error "Name oder E-Mail nicht korrekt."}, Nothing)
+
     FinishOrderTicket orderId reducedCountAsString ->
       let request =
             case (forcefullyExtractDeliveryOption model) of
@@ -179,7 +184,7 @@ update action (model, _) =
               _ -> FinishOrderRequest orderId (forcefullyExtractDeliveryOption model) (unwrapMaybe <| reducedCount model) (typeFromDeliveryOption (forcefullyExtractDeliveryOption model))
       in
         (model, Just <| request)
-    OrderStarted orderId -> ({model | orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = PickUpBoxOffice}}, Nothing)
+    OrderStarted orderId -> ({model | innerFlashMessage <- Hidden, orderState <- Ordering {name = model.formInput.name, email = model.formInput.email, id = orderId, deliveryOption = PickUpBoxOffice}}, Nothing)
     ShowErrorFlashMessage message -> ({model | flashMessage <- Error message}, Nothing)
     ClickAdmin -> ({model | loginFields <- Just {name = "", password = ""}}, Nothing)
     UpdateLoginName name -> ({model | loginFields <- Just {name = name, password = .password <| unwrapMaybe model.loginFields}}, Nothing)
@@ -194,6 +199,11 @@ update action (model, _) =
         _ -> (model, Nothing)
     NoOp -> (model, Nothing)
 
+startOrderValid : Model -> String -> String -> Bool
+startOrderValid model name email =
+  case model.session of
+    Anonymous -> (String.contains "@" email) && not (String.isEmpty name)
+    _ -> not (String.isEmpty name)
 
 ordersWithPaid : List Order -> Order -> List Order
 ordersWithPaid orders order =
