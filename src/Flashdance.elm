@@ -383,15 +383,15 @@ viewOrderList : Address Action -> Model -> H.Html
 viewOrderList address model =
   let paidLabel order =
         H.span [HA.class ("label " ++ (if order.paid then "label-success" else "label-warning"))] [ H.text (if order.paid then "Bezahlt" else "Nicht bezahlt") ]
-      numberLabel order =
-        H.span [HA.class "label label-info"] [ H.text <| toString order.number]
+      countLabel order =
+        H.span [HA.class "label label-success"] [ H.text <| toString <| List.length order.seatIds]
       orderItem currentOrder order =
         H.li [HA.class <| "list-group-item" ++ (if (Just order) == currentOrder then " active" else "")]
           [ H.span [HA.class "badge"] [ H.text <| "am " ++ formatShortDate order.createdAt ]
           , H.a [HE.onClick address (ClickOrder order), emptyHref]
-            [ H.text order.name ]
+            [ H.text <| "#" ++ (toString order.number) ++ " " ++ order.name ]
           , paidLabel order
-          , numberLabel order
+          , countLabel order
           ]
   in
       H.ul [HA.class "list-group"]
@@ -438,6 +438,7 @@ viewOrderDetail address model =
                 ]
               , H.div [HA.class "panel-body"]
                 [ H.h2 [] [H.text order.name, H.small [] [H.text <| " #" ++ toString order.number]]
+                , viewOrderTable' order
                 , paidButton order
                 , cancelButton order
                 , addressList order.address
@@ -737,6 +738,70 @@ viewOrderTable model =
           [ H.tr []
             [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
             , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| mapWithDefault Price.format "-" <| totalPrice model ] ]
+            ]
+          ]
+        ]
+      ]
+
+type alias OrderTable = { fullCount : Int,
+                          fullPrice : Price.Price,
+                          reducedCount : Int,
+                          reducedPrice : Price.Price,
+                          deliveryPrice : Maybe Price.Price,
+                          totalPrice : Price.Price
+                        }
+
+
+
+orderTableFromOrder : Order -> OrderTable
+orderTableFromOrder order =
+  let fullCount = (List.length order.seatIds) - order.reducedCount
+      fullPrice = Price.fromInt <| 1600 * fullCount
+      reducedPrice = Price.fromInt <| 1200 * order.reducedCount
+      deliveryPrice = (if isJust order.address then Just <| Price.fromInt 300 else Nothing)
+  in
+      { fullCount = fullCount,
+        fullPrice = fullPrice,
+        reducedCount = order.reducedCount,
+        reducedPrice = reducedPrice,
+        totalPrice =
+          case deliveryPrice of
+            Just p -> Price.add p (Price.add fullPrice reducedPrice)
+            Nothing -> Price.add fullPrice reducedPrice,
+        deliveryPrice = deliveryPrice
+      }
+
+
+
+
+viewOrderTable' : Order -> H.Html
+viewOrderTable' order =
+  let orderTable = orderTableFromOrder order
+      optionalDeliveryCosts = case order.address of
+        Just _ ->
+          [ H.tr []
+            [ H.td [] [ H.text "Versandkosten" ]
+            , H.td [HA.class "text-right"] [ H.text <| Price.format <| unwrapMaybe <| orderTable.deliveryPrice]
+            ]
+          ]
+        _ -> []
+  in
+    H.div []
+      [ H.table [HA.class "table"]
+        [ H.tbody []
+          ([ H.tr []
+            [ H.td [] [ H.text <| (toString <| orderTable.fullCount) ++ " reguläre Karten" ]
+            , H.td [HA.class "text-right"] [ H.text <| Price.format <| orderTable.fullPrice ]
+            ]
+          , H.tr []
+            [ H.td [] [ H.text <| (toString <| orderTable.reducedCount) ++ " ermäßigte Karten" ]
+            , H.td [HA.class "text-right"] [ H.text <| Price.format <| orderTable.reducedPrice ]
+            ]
+          ] ++ optionalDeliveryCosts)
+        , H.tfoot []
+          [ H.tr []
+            [ H.th [] [ H.strong [] [ H.text "Gesamtkosten" ] ]
+            , H.th [HA.class "text-right"] [ H.strong [] [ H.text <| Price.format <| orderTable.totalPrice ] ]
             ]
           ]
         ]
