@@ -1,10 +1,11 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login, orders, paid) where
 import Model as M
 import Http
 import Date
+import Dict
 import Task exposing (..)
 import Json.Decode exposing (..)
-import Json.Encode exposing (..)
+import Json.Encode as JE
 
 baseApiEndpoint : String
 baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
@@ -13,11 +14,13 @@ baseApiEndpoint = "https://tickets-backend-ruby.herokuapp.com"
 type alias GigId = String
 type alias OrderId = String
 type alias SeatId = String
+type alias Address' = { street: String, postalCode: String, city: String }
 type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
+type alias Order = { id: OrderId, createdAt: Date.Date, name: String, email: String, paid: Bool, reducedCount: Int, seatIds: List SeatId, number: Int, address: Maybe Address'}
 
 gigDecoder : Decoder (List Gig)
 gigDecoder =
-  Json.Decode.list (object4 Gig ("id" := Json.Decode.string) ("date" := dateDecoder) ("title" := Json.Decode.string) ("freeSeats" := Json.Decode.int))
+  Json.Decode.list (Json.Decode.object4 Gig ("id" := Json.Decode.string) ("date" := dateDecoder) ("title" := Json.Decode.string) ("freeSeats" := Json.Decode.int))
 
 reservationDecoder : Decoder M.Reservation
 reservationDecoder =
@@ -64,7 +67,7 @@ fetchReservations id =
 
 
 orderEncoder : String -> String -> (List String) -> Int -> String
-orderEncoder name email seatIds reducedCount = Json.Encode.encode 0 (object [("name", Json.Encode.string name), ("reducedCount", Json.Encode.int reducedCount), ("email", Json.Encode.string email), ("seatIds", Json.Encode.list (List.map Json.Encode.string seatIds))])
+orderEncoder name email seatIds reducedCount = JE.encode 0 (JE.object [("name", JE.string name), ("reducedCount", JE.int reducedCount), ("email", JE.string email), ("seatIds", JE.list (List.map JE.string seatIds))])
 
 submitOrder : String -> String -> String -> List String -> Int -> Task Http.Error String
 submitOrder gigId name email seatIds reducedCount =
@@ -75,14 +78,14 @@ startOrder name email =
   post (Json.Decode.at ["orderId"] Json.Decode.string) (baseApiEndpoint ++ "/orders") (Http.string (orderEncoder name email [] 0))
 
 finishOrderEncoder : Int -> String -> String
-finishOrderEncoder reducedCount type' = Json.Encode.encode 0 (object [("reducedCount", Json.Encode.int reducedCount), ("type", Json.Encode.string type')])
+finishOrderEncoder reducedCount type' = JE.encode 0 (JE.object [("reducedCount", JE.int reducedCount), ("type", JE.string type')])
 
 finishOrder : String -> Int -> String -> Task Http.Error String
 finishOrder orderId reducedCount type' =
   put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/finish") (Http.string <| finishOrderEncoder reducedCount type')
 
 finishOrderWithAddressEncoder : Int -> String -> String -> String -> String
-finishOrderWithAddressEncoder reducedCount street postalCode city = Json.Encode.encode 0 (object [("reducedCount", Json.Encode.int reducedCount), ("address", object [("street", Json.Encode.string street), ("postalCode", Json.Encode.string postalCode), ("city", Json.Encode.string city)])])
+finishOrderWithAddressEncoder reducedCount street postalCode city = JE.encode 0 (JE.object [("reducedCount", JE.int reducedCount), ("address", JE.object [("street", JE.string street), ("postalCode", JE.string postalCode), ("city", JE.string city)])])
 
 finishOrderWithAddress : String -> Int -> String -> String -> String -> Task Http.Error String
 finishOrderWithAddress orderId reducedCount street postalCode city =
@@ -100,10 +103,56 @@ requestWithCredentials user pw verb decoder url body =
   in
       Http.fromJson decoder (Http.send Http.defaultSettings request)
 
+addressDecoder : Decoder Address'
+addressDecoder = Json.Decode.object3 Address' ("street" := Json.Decode.string) ("postalCode" := Json.Decode.string) ("city" := Json.Decode.string)
+
+ordersDecoder : Decoder (List Order)
+ordersDecoder = Json.Decode.list orderDecoder
+
+unwrap : Maybe a -> a
+unwrap x =
+  case x of
+    Just j -> j
+
+unwrapResult : Result x y -> y
+unwrapResult r =
+  case r of
+    Ok r -> r
+
+orderDecoder : Decoder Order
+orderDecoder =
+  let foo key decoder v = unwrapResult <| Json.Decode.decodeValue decoder (unwrap <| Dict.get key v)
+  in
+      Json.Decode.customDecoder (Json.Decode.dict Json.Decode.value) (\v ->
+        Ok { id = foo "id" string v
+           , createdAt = foo "createdAt" dateDecoder v
+           , name = foo "name" string v
+           , email = foo "email" string v
+           , paid = foo "paid" bool v
+           , reducedCount = foo "reducedCount" int v
+           , seatIds = foo "seatIds" (list string) v
+           , number = foo "number" int v
+           , address = case Dict.get "address" v of
+             Just a ->
+               case decodeValue addressDecoder a of
+                 Ok f -> Just f
+                 Err _ -> Nothing
+             Nothing -> Nothing
+        }
+      )
+
+
+orders : Task Http.Error (List Order)
+orders = get ordersDecoder (baseApiEndpoint ++ "/orders")
+
 post    = requestWithCredentials "" "" "POST"
 put     = requestWithCredentials "" "" "PUT"
 delete  = requestWithCredentials "" "" "DELETE"
 get decoder url = requestWithCredentials "" "" "GET" decoder url (Http.empty)
+
+paid : OrderId -> String -> String -> Task Http.Error String
+paid orderId name password =
+  put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/pay") (Http.empty)
 
 
 reserveSeat : OrderId -> SeatId -> Task Http.Error String
@@ -116,4 +165,4 @@ freeSeat orderId seatId =
 
 login : String -> String -> Task Http.Error String
 login user password =
-  post (Json.Decode.at ["role"] Json.Decode.string) (baseApiEndpoint ++ "/login") (Http.string (Json.Encode.encode 0 (object [("user", Json.Encode.string user), ("password", Json.Encode.string password)])))
+  post (Json.Decode.at ["role"] Json.Decode.string) (baseApiEndpoint ++ "/login") (Http.string (JE.encode 0 (JE.object [("user", JE.string user), ("password", JE.string password)])))

@@ -31,7 +31,13 @@ type Action
   | ClickSeat M.Seat
   | SeatsReceived (List M.Seat, List M.Row)
   | GigsReceived (List Gig)
+  | OrdersReceived (List Order)
+  | PayOrder Order
   | ClickGig Gig
+  | ClickOrder Order
+  | ClickPaid Order
+  | ClickUnpaid Order
+  | ClickCancelOrder Order
   | ReservationsReceived (List M.Reservation)
   | OrderTicket Gig Name Email (List M.Seat) String
   | UpdateEmail String
@@ -66,6 +72,8 @@ type Effect
   | FinishOrderRequest OrderId DeliveryOption Int String
   | FinishOrderWithAddressRequest OrderId Int Address'
   | LoginRequest Credentials
+  | PaidRequest Credentials Order
+  | ListOrderRequest Credentials
 
 type CurrentPage = GigIndex | GigView Gig
 type FlashMessage = Success String | Info String | Error String | Hidden
@@ -75,15 +83,16 @@ type OrderState = Ordering OrderInfo | Browsing | Ordered OrderInfo
 type alias Address' = { street: String, postalCode: String, city: String }
 type alias CurrentFormInput = { name: String, email: String, reduced: String }
 type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
+type alias Order = { id: OrderId, createdAt: Date.Date, name: String, email: String, paid: Bool, reducedCount: Int, seatIds: List SeatId, number: Int, address: Maybe Address'}
 type alias Credentials = { name: String, password: String }
 type Session = Anonymous | User Credentials | Admin Credentials
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage, loginFields: Maybe Credentials, session: Session}
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage, loginFields: Maybe Credentials, session: Session, orders: List Order, currentOrder: Maybe Order }
 
 emptyAddress : Address'
 emptyAddress = { street = "", postalCode = "", city = "" }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden, loginFields = Nothing, session = Anonymous}
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden, loginFields = Nothing, session = Anonymous, orders = [], currentOrder = Nothing }
 
 updateAddress : Model -> Address' -> Model
 updateAddress model address =
@@ -137,8 +146,10 @@ update action (model, _) =
     SeatUnselected seatId -> ({model | stand <- M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
     SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
+    PayOrder order -> ({model | orders <- ordersWithPaid model.orders order, currentOrder <- Just {order | paid <- True}}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
+    ClickOrder order -> ({model | currentOrder <- Just order}, Nothing)
     OrderTicket gig name email seats reduced ->
       case String.toInt reduced of
         Result.Ok x -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats x)
@@ -175,15 +186,33 @@ update action (model, _) =
     UpdateLoginPassword pw -> ({model | loginFields <- Just {name = .name <| unwrapMaybe model.loginFields, password = pw}}, Nothing)
     Login credentials -> (model, Just <| LoginRequest credentials)
     LoginAsUserSucceeded credentials -> ({model | session <- User credentials}, Nothing)
-    LoginAsAdminSucceeded credentials -> ({model | session <- Admin credentials}, Nothing)
+    LoginAsAdminSucceeded credentials -> ({model | session <- Admin credentials}, Just <| ListOrderRequest credentials)
+    OrdersReceived orders -> ({model | orders <- orders}, Nothing)
+    ClickPaid order ->
+      case model.session of
+        Admin c -> (model, Just <| PaidRequest c order)
+        _ -> (model, Nothing)
     NoOp -> (model, Nothing)
 
+
+ordersWithPaid : List Order -> Order -> List Order
+ordersWithPaid orders order =
+  L.map (\o -> if o.id == order.id then {o | paid <- True} else o) orders
 
 
 
 port fetchGigs : Task Http.Error ()
 port fetchGigs =
   HttpRequests.fetchGigs `Task.andThen` (\gigs -> Signal.send actions.address (GigsReceived gigs))
+
+port fetchOrders : Signal (Task Http.Error ())
+port fetchOrders =
+  let maybeRequest s = case s of
+    Just (ListOrderRequest credentials) ->
+      HttpRequests.orders `Task.andThen` (\orders -> Signal.send actions.address (OrdersReceived orders))
+      `Task.onError` (\error -> Signal.send actions.address (ShowErrorFlashMessage <| toString error))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
 
 
 seatsRequestGigIdSignal : Signal (Maybe GigId)
@@ -280,6 +309,15 @@ port freeSeatRequest =
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
+port paidRequest : Signal (Task Http.Error ())
+port paidRequest =
+  let maybeRequest s = case s of
+    Just (PaidRequest credentials order) ->
+      (HttpRequests.paid order.id credentials.name credentials.password)
+      `Task.andThen` (\_ -> Signal.send actions.address (PayOrder order))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
 port loginRequest : Signal (Task Http.Error ())
 port loginRequest =
   let maybeRequest s = case s of
@@ -290,11 +328,12 @@ port loginRequest =
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
+emptyHref = HA.href "javascript:void(0)"
 
 drawGigEntry : Address Action -> Gig -> H.Html
 drawGigEntry address gig =
   H.li []
-    [ H.a [HA.href "#", HE.onClick address (ClickGig gig)]
+    [ H.a [emptyHref, HE.onClick address (ClickGig gig)]
       [ H.text <| (formatDate gig.date) ++ " "
       , H.span [HA.class "badge"]
         [ H.text <| (toString gig.freeSeats) ++ " freie Plätze" ]
@@ -327,12 +366,87 @@ formatDate date =
       year = DF.format "%Y"
   in  (day date) ++ ". " ++ monthName ++ " " ++ (year date)
 
+formatShortDate : Date.Date -> String
+formatShortDate = DF.format "%d.%m.%Y"
+
+viewOrderList : Address Action -> Model -> H.Html
+viewOrderList address model =
+  let paidLabel order =
+        H.span [HA.class ("label " ++ (if order.paid then "label-success" else "label-warning"))] [ H.text (if order.paid then "Bezahlt" else "Nicht bezahlt") ]
+      numberLabel order =
+        H.span [HA.class "label label-info"] [ H.text <| toString order.number]
+      orderItem currentOrder order =
+        H.li [HA.class <| "list-group-item" ++ (if (Just order) == currentOrder then " active" else "")]
+          [ H.span [HA.class "badge"] [ H.text <| "am " ++ formatShortDate order.createdAt ]
+          , H.a [HE.onClick address (ClickOrder order), emptyHref]
+            [ H.text order.name ]
+          , paidLabel order
+          , numberLabel order
+          ]
+  in
+      H.ul [HA.class "list-group"]
+        (L.map (orderItem model.currentOrder) model.orders)
+
+viewOrderDetail : Address Action -> Model -> H.Html
+viewOrderDetail address model =
+  let paidButton order =
+        if not order.paid then
+          H.button [HE.onClick address (ClickPaid order), HA.class "btn btn-primary"]
+            [ H.text "Bezahlt!"
+            ]
+        else
+          H.text ""
+          --H.button [HE.onClick address (ClickUnpaid order), HA.class "btn btn-warning"]
+            --[ H.text "Bezahlung widerrufen!"
+            --]
+      cancelButton order =
+        H.button [HE.onClick address (ClickCancelOrder order), HA.class "btn btn-danger"]
+          [ H.text "Bestellung stornieren"
+          ]
+      addressList address =
+        case address of
+          Just a ->
+            H.dl []
+              [ H.dt [] [H.text "Straße"]
+              , H.dd [] [H.text a.street]
+              , H.dt [] [H.text "PLZ"]
+              , H.dd [] [H.text a.postalCode]
+              , H.dt [] [H.text "Stadt"]
+              , H.dd [] [H.text a.city]
+              ]
+          Nothing ->
+            H.text ""
+  in
+      case model.currentOrder of
+        Nothing ->
+          H.text ""
+        Just order ->
+            H.div [HA.class "panel panel-default"]
+              [ H.div [HA.class "panel-heading"]
+                [ H.h3 [HA.class "panel-title"]
+                  [ H.text "Bestellungsdetail" ]
+                ]
+              , H.div [HA.class "panel-body"]
+                [ H.h2 [] [H.text order.name, H.small [] [H.text <| " #" ++ toString order.number]]
+                , paidButton order
+                , cancelButton order
+                , addressList order.address
+                ]
+              ]
+
+isAdmin : Session -> Bool
+isAdmin s =
+  case s of
+    Admin _ -> True
+    _ -> False
+
+
 view : Address Action -> Model -> H.Html
 view address model =
   let header = viewFlashMessage address CloseFlashMessage model.flashMessage
       innerHeader = viewFlashMessage address CloseFlashMessage model.innerFlashMessage
       gigNavItem address currentGig gig =
-        H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ HA.href "#", HE.onClick address (ClickGig gig) ] [ H.text (formatDate gig.date) ] ]
+        H.li (if gig == currentGig then [HA.class "disabled"] else []) [ H.a [ emptyHref, HE.onClick address (ClickGig gig) ] [ H.text (formatDate gig.date) ] ]
       body model =
         case model.page of
           GigIndex ->
@@ -386,6 +500,14 @@ view address model =
                   ]
                 ]
               ]
+            , (if (isAdmin model.session) then H.div [HA.class "row"]
+              [ H.div [HA.class "col-md-4"]
+                [ viewOrderList address model
+                ]
+              , H.div [HA.class "col-md-8"]
+                [ viewOrderDetail address model
+                ]
+              ] else H.text "")
             ]
       loginForm model =
         case model.session of
