@@ -144,12 +144,22 @@ update action (model, _) =
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatSelected seatId -> ({model | stand <- M.selectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
     SeatUnselected seatId -> ({model | stand <- M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
-    SeatsReceived (seats, rows) -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
+    SeatsReceived (seats, rows) ->
+      case model.orderState of
+        Ordering _ -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
+        _ ->
+          case model.currentOrder of
+            Just o -> ({model | stand <- M.selectSeatIds (M.updateSeats model.stand seats rows) o.seatIds}, Nothing)
+            Nothing -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     PayOrder order -> ({model | orders <- ordersWithPaid model.orders order, currentOrder <- Just {order | paid <- True}}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
-    ClickOrder order -> ({model | currentOrder <- Just order}, Nothing)
+    ClickOrder order ->
+      case model.orderState of
+        Ordering _ -> ({model | currentOrder <- Just order}, Nothing)
+        _ -> ({model | currentOrder <- Just order, stand <- M.selectSeatIds (M.clearSelections model.stand) order.seatIds}, Nothing)
+
     OrderTicket gig name email seats reduced ->
       case String.toInt reduced of
         Result.Ok x -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats x)
@@ -173,7 +183,7 @@ update action (model, _) =
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
     StartOrder name email ->
       if startOrderValid model name email then
-        (model, Just <| StartOrderRequest name email)
+        ({ model | stand <- M.clearSelections model.stand}, Just <| StartOrderRequest name email)
       else
         ({ model | innerFlashMessage <- Error "Name oder E-Mail nicht vorhanden."}, Nothing)
 

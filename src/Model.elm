@@ -1,4 +1,4 @@
-module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, toggleSelected, selectSeat, unselectSeat, clearSelections, findSeat) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, selectSeat, unselectSeat, clearSelections, findSeat, selectSeatIds) where
 import Dict as D
 import List as L
 import String as S
@@ -12,21 +12,33 @@ type alias Seat = { id: SeatId, x: Int, number: Int, row: Int, usable: Bool }
 
 type alias Model = { reservations: List Reservation, seats: List Seat, rows: List Row, selections: List Seat }
 
-
-toggleSelected : Model -> Seat -> Model
-toggleSelected model seat =
-  case seat.usable of
-    True -> if | isSelected model seat -> { model | selections <- L.filter ((/=) seat) model.selections }
-               | isReserved model seat -> model
-               | otherwise -> { model | selections <- seat :: model.selections }
-    False -> model
-
 selectSeat : Model -> Seat -> Model
 selectSeat model seat =
   case seat.usable of
     True -> if | isReserved model seat -> model
-               | otherwise -> { model | selections <- seat :: model.selections }
+               | otherwise -> alwaysSelectSeat model seat
     False -> model
+
+alwaysSelectSeat : Model -> Seat -> Model
+alwaysSelectSeat model seat =
+  { model | selections <- seat :: model.selections }
+
+unwrap : Maybe x -> x
+unwrap m =
+  case m of
+    Maybe.Just j -> j
+
+compact : List (Maybe a) -> List a
+compact = List.map unwrap << List.filter (\e -> case e of
+                                                  Just _ -> True
+                                                  Nothing -> False
+                                         )
+
+selectSeatIds : Model -> List SeatId -> Model
+selectSeatIds model seatIds =
+  let selectSeats model seats = List.foldl (\s m -> alwaysSelectSeat m s) model seats
+  in  selectSeats model (compact <| List.map (\s -> findSeat model s) seatIds)
+
 
 unselectSeat : Model -> Seat -> Model
 unselectSeat model seat =
