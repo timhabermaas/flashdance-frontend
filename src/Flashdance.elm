@@ -53,6 +53,7 @@ type Action
   | SeatReserved SeatId
   | SeatSelected SeatId
   | SeatUnselected SeatId
+  | TypeSearch String
   | ShowErrorFlashMessage String
   | UpdateDeliveryOption DeliveryOption
   | FinishOrderTicket OrderId String
@@ -86,13 +87,13 @@ type alias Gig = { id: GigId, date: Date.Date, title: String, freeSeats: Int }
 type alias Order = { id: OrderId, createdAt: Date.Date, name: String, email: String, paid: Bool, reducedCount: Int, seatIds: List SeatId, number: Int, address: Maybe Address'}
 type alias Credentials = { name: String, password: String }
 type Session = Anonymous | User Credentials | Admin Credentials
-type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage, loginFields: Maybe Credentials, session: Session, orders: List Order, currentOrder: Maybe Order }
+type alias Model = { formInput: CurrentFormInput, stand: M.Model, gigs: List Gig, orderState: OrderState, page: CurrentPage, flashMessage: FlashMessage, innerFlashMessage: FlashMessage, loginFields: Maybe Credentials, session: Session, orders: List Order, currentOrder: Maybe Order, searchField: String }
 
 emptyAddress : Address'
 emptyAddress = { street = "", postalCode = "", city = "" }
 
 initialModel : Model
-initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden, loginFields = Nothing, session = Anonymous, orders = [], currentOrder = Nothing }
+initialModel = { page = GigIndex, gigs = [], stand = M.initialModel, formInput = { name = "", email = "", reduced = "0"}, flashMessage = Hidden, orderState = Browsing, innerFlashMessage = Hidden, loginFields = Nothing, session = Anonymous, orders = [], currentOrder = Nothing, searchField = "" }
 
 updateAddress : Model -> Address' -> Model
 updateAddress model address =
@@ -181,6 +182,7 @@ update action (model, _) =
     UpdatePostalCode pc -> (updateAddress model (updatePostalCode (forcefullyExtractAddress model) pc), Nothing)
     HttpOrderFailed error -> ({model | flashMessage <- (Error error)}, Nothing)
     CloseFlashMessage -> ({model | flashMessage <- Hidden}, Nothing)
+    TypeSearch s -> ({model | searchField <- s}, Nothing)
     StartOrder name email ->
       if startOrderValid model name email then
         ({ model | stand <- M.clearSelections model.stand}, Just <| StartOrderRequest name email)
@@ -219,6 +221,15 @@ ordersWithPaid : List Order -> Order -> List Order
 ordersWithPaid orders order =
   L.map (\o -> if o.id == order.id then {o | paid <- True} else o) orders
 
+
+filterOrders : List Order -> String -> List Order
+filterOrders orders search =
+  if String.isEmpty search then
+    orders
+  else
+    case String.toInt search of
+      Ok n -> List.filter (\o -> String.contains (toString n) (toString o.number)) orders
+      Err _ -> List.filter (\o -> String.contains (String.toLower search) (String.toLower o.name)) orders
 
 
 port fetchGigs : Task Http.Error ()
@@ -403,8 +414,22 @@ viewOrderList address model =
           , countLabel order
           ]
   in
-      H.ul [HA.class "list-group"]
-        (L.map (orderItem model.currentOrder) model.orders)
+      H.div []
+        [ H.div [HA.class "row"]
+          [ H.div [HA.class "form-group"]
+            [ H.div [HA.class "input-group"]
+              [ H.div [HA.class "input-group-addon"]
+                [ H.span [HA.class "glyphicon glyphicon-search"] []
+                ]
+              , H.input [HE.on "input" HE.targetValue <| Signal.message address << TypeSearch, HA.type' "text", HA.class "form-control", HA.placeholder "Suche..."] []
+              ]
+            ]
+          ]
+        , H.div [HA.class "row"]
+          [ H.ul [HA.class "list-group"]
+              (L.map (orderItem model.currentOrder) (filterOrders model.orders model.searchField))
+          ]
+        ]
 
 viewOrderDetail : Address Action -> Model -> H.Html
 viewOrderDetail address model =
