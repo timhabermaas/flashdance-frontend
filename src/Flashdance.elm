@@ -396,10 +396,9 @@ viewOrderList address model =
       countLabel order =
         H.span [HA.class "label label-success"] [ H.text <| toString <| List.length order.seatIds]
       orderItem currentOrder order =
-        H.li [HA.class <| "list-group-item" ++ (if (Just order) == currentOrder then " active" else "")]
+        H.li [HE.onClick address (ClickOrder order), HA.style [("cursor", "pointer")], HA.class <| "list-group-item" ++ (if (Just order) == currentOrder then " active" else "")]
           [ H.span [HA.class "badge"] [ H.text <| "am " ++ formatShortDate order.createdAt ]
-          , H.a [HE.onClick address (ClickOrder order), emptyHref]
-            [ H.text <| "#" ++ (toString order.number) ++ " " ++ order.name ]
+          , H.text <| "#" ++ (toString order.number) ++ " " ++ order.name
           , paidLabel order
           , countLabel order
           ]
