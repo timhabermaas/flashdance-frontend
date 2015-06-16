@@ -494,7 +494,7 @@ view address model =
             , H.div [HA.class "row"]
               [ H.div [HA.class "col-md-12"]
                 [ H.br [] []
-                , H.p [] [H.text "What a feeling: Wir haben unsere Zuschauertribüne überarbeitet und bieten ab sofort mehr 20% mehr Sitzfreiheit je Platz!"]
+                , H.p [] [H.text "What a feeling: Wir haben unsere Zuschauertribüne überarbeitet und bieten ab sofort 20% mehr Sitzfreiheit je Platz!"]
                 ]
               ]
             ]
