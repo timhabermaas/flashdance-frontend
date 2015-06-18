@@ -38,6 +38,7 @@ type Action
   | ClickPaid Order
   | ClickUnpaid Order
   | ClickCancelOrder Order
+  | CancelOrderSucceeded Order
   | ReservationsReceived (List M.Reservation)
   | OrderTicket Gig Name Email (List M.Seat) String
   | UpdateEmail String
@@ -75,6 +76,7 @@ type Effect
   | LoginRequest Credentials
   | PaidRequest Credentials Order
   | ListOrderRequest Credentials
+  | CancelOrderRequest Order
 
 type CurrentPage = GigIndex | GigView Gig
 type FlashMessage = Success String | Info String | Error String | Hidden
@@ -165,6 +167,8 @@ update action (model, _) =
       case String.toInt reduced of
         Result.Ok x -> ({model | stand <- M.clearSelections <| M.reserveSeats model.stand seats}, Just <| SubmitOrder gig.id name email seats x)
         Result.Err x -> (model, Nothing)
+    ClickCancelOrder order -> (model, Just <| CancelOrderRequest order)
+    CancelOrderSucceeded order -> ({model | stand <- M.freeSeats (M.clearSelections model.stand) order.seatIds, orders <- List.filter (\o -> o.id /= order.id) model.orders, currentOrder <- Nothing}, Nothing)
     UpdateEmail email -> ({model | formInput <- {name = model.formInput.name, email = email, reduced = model.formInput.reduced}}, Nothing)
     UpdateName name -> ({model | formInput <- {name = name, email = model.formInput.email, reduced = model.formInput.reduced}}, Nothing)
     UpdateDeliveryOption option ->
@@ -244,6 +248,16 @@ port fetchOrders =
       `Task.onError` (\error -> Signal.send actions.address (ShowErrorFlashMessage <| toString error))
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
+
+port cancelOrder : Signal (Task Http.Error ())
+port cancelOrder =
+  let maybeRequest s = case s of
+    Just (CancelOrderRequest order) ->
+      HttpRequests.cancelOrder order.id `Task.andThen` (\_ -> Signal.send actions.address (CancelOrderSucceeded order))
+      `Task.onError` (\error -> Signal.send actions.address (ShowErrorFlashMessage <| toString error))
+    _ -> Task.succeed ()
+  in Signal.map maybeRequest effects
+
 
 
 seatsRequestGigIdSignal : Signal (Maybe GigId)

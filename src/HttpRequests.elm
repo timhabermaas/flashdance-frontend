@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login, orders, paid) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login, orders, paid, cancelOrder) where
 import Model as M
 import Http
 import Date
@@ -166,3 +166,7 @@ freeSeat orderId seatId =
 login : String -> String -> Task Http.Error String
 login user password =
   post (Json.Decode.at ["role"] Json.Decode.string) (baseApiEndpoint ++ "/login") (Http.string (JE.encode 0 (JE.object [("user", JE.string user), ("password", JE.string password)])))
+
+cancelOrder : OrderId -> Task Http.Error String
+cancelOrder orderId =
+  delete (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId) (Http.empty)

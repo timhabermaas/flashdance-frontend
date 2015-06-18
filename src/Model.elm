@@ -1,10 +1,10 @@
-module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, rows, seatsInRow, initialModel, isSelected, isReserved, selectSeat, unselectSeat, clearSelections, findSeat, selectSeatIds) where
+module Model (Model, Seat, Row, Reservation, selectionsAsText, isUsable, updateSeats, updateReservations, reserveSeats, freeSeats, rows, seatsInRow, initialModel, isSelected, isReserved, selectSeat, unselectSeat, clearSelections, findSeat, selectSeatIds) where
 import Dict as D
 import List as L
 import String as S
 
 type alias SeatId = String
-type alias Reservation = { seatId: String }
+type alias Reservation = { seatId: SeatId }
 
 
 type alias Row = { number: Int, y: Int }
@@ -27,6 +27,11 @@ unwrap : Maybe x -> x
 unwrap m =
   case m of
     Maybe.Just j -> j
+
+freeSeats : Model -> List SeatId -> Model
+freeSeats model seatIds =
+  {model | reservations <- List.filter (\r -> not <| List.member r.seatId seatIds) model.reservations}
+
 
 compact : List (Maybe a) -> List a
 compact = List.map unwrap << List.filter (\e -> case e of
