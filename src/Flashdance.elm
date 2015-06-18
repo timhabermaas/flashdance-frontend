@@ -657,7 +657,7 @@ viewOrderFinishForm address order model =
       [ H.div [HA.class "row"]
         [ H.div [HA.class "col-md-6"]
           [ numberInput address UpdateReducedCount "reduced" "davon ermäßigte Karten" model.formInput.reduced
-          , radioInputs address UpdateDeliveryOption "deliveryOption" [PickUpBoxOffice, PickUpBeforehand, Delivery emptyAddress] PickUpBeforehand
+          , radioInputs address UpdateDeliveryOption "deliveryOption" [PickUpBoxOffice, PickUpBeforehand, Delivery emptyAddress] PickUpBoxOffice
           , addressForm address model
           ]
         ]
