@@ -146,7 +146,7 @@ update action (model, _) =
     ResetApp -> ({model | orderState <- Browsing, stand <- M.clearSelections <| M.reserveSeats model.stand model.stand.selections, flashMessage <- Hidden, formInput <- { name = "", email = "", reduced = "0"}, innerFlashMessage <- Hidden}, Nothing)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatSelected seatId -> ({model | stand <- M.selectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
-    SeatUnselected seatId -> ({model | stand <- M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
+    SeatUnselected seatId -> ({model | stand <- M.freeSeats (M.unselectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId) [seatId]}, Nothing)
     SeatsReceived (seats, rows) ->
       case model.orderState of
         Ordering _ -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)

@@ -48,8 +48,7 @@ selectSeatIds model seatIds =
 unselectSeat : Model -> Seat -> Model
 unselectSeat model seat =
   case seat.usable of
-    True -> if | isReserved model seat -> model
-               | otherwise -> { model | selections <- L.filter ((/=) seat) model.selections }
+    True -> { model | selections <- L.filter ((/=) seat) model.selections }
     False -> model
 
 initialModel : Model
