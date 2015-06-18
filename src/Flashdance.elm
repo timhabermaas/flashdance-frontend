@@ -144,7 +144,10 @@ update action (model, _) =
         else
           (model, Just (ReserveSeatRequest order.id seat.id))
       _ -> (model, Nothing)
-    OrderSucceeded -> ({model | orderState <- Ordered (forcefullyExtractOrderInfo model)}, Nothing)
+    OrderSucceeded ->
+      case model.session of
+        Admin c -> ({model | orderState <- Ordered (forcefullyExtractOrderInfo model)}, Just <| ListOrderRequest c)
+        _ -> ({model | orderState <- Ordered (forcefullyExtractOrderInfo model)}, Nothing)
     ResetApp -> ({model | orderState <- Browsing, stand <- M.clearSelections <| M.reserveSeats model.stand model.stand.selections, flashMessage <- Hidden, formInput <- { name = "", email = "", reduced = "0"}, innerFlashMessage <- Hidden}, Nothing)
     SeatReserved seatId -> ({model | stand <- M.reserveSeats model.stand [unwrapMaybe <| M.findSeat model.stand seatId]}, Nothing)
     SeatSelected seatId -> ({model | stand <- M.selectSeat model.stand <| unwrapMaybe <| M.findSeat model.stand seatId}, Nothing)
@@ -246,6 +249,17 @@ filterOrders orders search =
       Ok n -> List.filter (\o -> String.contains (toString n) (toString o.number)) orders
       Err _ -> List.filter (\o -> String.contains (String.toLower search) (String.toLower o.name)) orders
 
+ordersWithDelivery : List Order -> List Order
+ordersWithDelivery =
+  List.filter (isJust << .address)
+
+ordersWithEmail : List Order -> List Order
+ordersWithEmail =
+  List.filter (not << String.isEmpty << .email)
+
+ordersWithoutEmail : List Order -> List Order
+ordersWithoutEmail =
+  List.filter (String.isEmpty << .email)
 
 port fetchGigs : Task Http.Error ()
 port fetchGigs =
@@ -428,8 +442,21 @@ formatDate date =
 formatShortDate : Date.Date -> String
 formatShortDate = DF.format "%d.%m.%Y"
 
-viewOrderList : Address Action -> Model -> H.Html
-viewOrderList address model =
+viewOrderFilterTextField : Address Action -> Model -> H.Html
+viewOrderFilterTextField address model =
+  H.div [HA.class "row"]
+    [ H.div [HA.class "form-group"]
+      [ H.div [HA.class "input-group"]
+        [ H.div [HA.class "input-group-addon"]
+          [ H.span [HA.class "glyphicon glyphicon-search"] []
+          ]
+        , H.input [HE.on "input" HE.targetValue <| Signal.message address << TypeSearch, HA.type' "text", HA.class "form-control", HA.placeholder "Suche..."] []
+        ]
+      ]
+    ]
+
+viewOrderList : Address Action -> List Order -> Maybe Order -> H.Html
+viewOrderList address orders currentOrder =
   let paidLabel order =
         H.span [HA.class ("label " ++ (if order.paid then "label-success" else "label-warning"))] [ H.text (if order.paid then "Bezahlt" else "Nicht bezahlt") ]
       countLabel order =
@@ -442,21 +469,9 @@ viewOrderList address model =
           , countLabel order
           ]
   in
-      H.div []
-        [ H.div [HA.class "row"]
-          [ H.div [HA.class "form-group"]
-            [ H.div [HA.class "input-group"]
-              [ H.div [HA.class "input-group-addon"]
-                [ H.span [HA.class "glyphicon glyphicon-search"] []
-                ]
-              , H.input [HE.on "input" HE.targetValue <| Signal.message address << TypeSearch, HA.type' "text", HA.class "form-control", HA.placeholder "Suche..."] []
-              ]
-            ]
-          ]
-        , H.div [HA.class "row"]
-          [ H.ul [HA.class "list-group"]
-              (L.map (orderItem model.currentOrder) (filterOrders model.orders model.searchField))
-          ]
+      H.div [HA.class "row"]
+        [ H.ul [HA.class "list-group"]
+            (L.map (orderItem currentOrder) orders)
         ]
 
 viewOrderDetail : Address Action -> Model -> H.Html
@@ -580,7 +595,13 @@ view address model =
               ]
             , (if (isAdmin model.session) then H.div [HA.class "row"]
               [ H.div [HA.class "col-md-4"]
-                [ viewOrderList address model
+                [ viewOrderFilterTextField address model
+                , H.div [HA.class "row"] [ H.h3 [] [ H.text "Online-Bestellungen", H.small [] [ H.text " mit E-Mail" ] ] ]
+                , viewOrderList address (filterOrders (ordersWithEmail model.orders) model.searchField) model.currentOrder
+                , H.div [HA.class "row"] [ H.h3 [] [ H.text "Interne Bestellungen", H.small [] [ H.text " keine E-Mail" ] ] ]
+                , viewOrderList address (filterOrders (ordersWithoutEmail model.orders) model.searchField) model.currentOrder
+                , H.div [HA.class "row"] [ H.h3 [] [ H.text "Zu versendende Bestellungen" ] ]
+                , viewOrderList address (filterOrders (ordersWithDelivery model.orders) model.searchField) model.currentOrder
                 ]
               , H.div [HA.class "col-md-8"]
                 [ viewOrderDetail address model
