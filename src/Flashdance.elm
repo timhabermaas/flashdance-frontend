@@ -33,6 +33,7 @@ type Action
   | GigsReceived (List Gig)
   | OrdersReceived (List Order)
   | PayOrder Order
+  | UnpayOrder Order
   | ClickGig Gig
   | ClickOrder Order
   | ClickPaid Order
@@ -75,6 +76,7 @@ type Effect
   | FinishOrderWithAddressRequest OrderId Int Address'
   | LoginRequest Credentials
   | PaidRequest Credentials Order
+  | UnpaidRequest Credentials Order
   | ListOrderRequest Credentials
   | CancelOrderRequest Order
 
@@ -156,6 +158,7 @@ update action (model, _) =
             Nothing -> ({model | stand <- M.updateSeats model.stand seats rows}, Nothing)
     GigsReceived gigs -> ({model | gigs <- gigs}, Nothing)
     PayOrder order -> ({model | orders <- ordersWithPaid model.orders order, currentOrder <- Just {order | paid <- True}}, Nothing)
+    UnpayOrder order -> ({model | orders <- ordersWithUnpaid model.orders order, currentOrder <- Just {order | paid <- False}}, Nothing)
     ReservationsReceived r -> ({model | stand <- M.updateReservations model.stand r}, Nothing)
     ClickGig gig -> ({model | page <- GigView gig}, Just <| FetchSeats gig.id)
     ClickOrder order ->
@@ -213,6 +216,10 @@ update action (model, _) =
       case model.session of
         Admin c -> (model, Just <| PaidRequest c order)
         _ -> (model, Nothing)
+    ClickUnpaid order ->
+      case model.session of
+        Admin c -> (model, Just <| UnpaidRequest c order)
+        _ -> (model, Nothing)
     NoOp -> (model, Nothing)
 
 startOrderValid : Model -> String -> String -> Bool
@@ -224,6 +231,10 @@ startOrderValid model name email =
 ordersWithPaid : List Order -> Order -> List Order
 ordersWithPaid orders order =
   L.map (\o -> if o.id == order.id then {o | paid <- True} else o) orders
+
+ordersWithUnpaid : List Order -> Order -> List Order
+ordersWithUnpaid orders order =
+  L.map (\o -> if o.id == order.id then {o | paid <- False} else o) orders
 
 
 filterOrders : List Order -> String -> List Order
@@ -354,12 +365,15 @@ port freeSeatRequest =
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
-port paidRequest : Signal (Task Http.Error ())
-port paidRequest =
+port payRequests : Signal (Task Http.Error ())
+port payRequests =
   let maybeRequest s = case s of
     Just (PaidRequest credentials order) ->
       (HttpRequests.paid order.id credentials.name credentials.password)
       `Task.andThen` (\_ -> Signal.send actions.address (PayOrder order))
+    Just (UnpaidRequest credentials order) ->
+      (HttpRequests.unpaid order.id credentials.name credentials.password)
+      `Task.andThen` (\_ -> Signal.send actions.address (UnpayOrder order))
     _ -> Task.succeed ()
   in Signal.map maybeRequest effects
 
@@ -453,10 +467,9 @@ viewOrderDetail address model =
             [ H.text "Bezahlt!"
             ]
         else
-          H.text ""
-          --H.button [HE.onClick address (ClickUnpaid order), HA.class "btn btn-warning"]
-            --[ H.text "Bezahlung widerrufen!"
-            --]
+          H.button [HE.onClick address (ClickUnpaid order), HA.class "btn btn-warning"]
+            [ H.text "Bezahlung widerrufen!"
+            ]
       cancelButton order =
         H.button [HE.onClick address (ClickCancelOrder order), HA.class "btn btn-danger"]
           [ H.text "Bestellung stornieren"

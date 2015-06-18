@@ -1,4 +1,4 @@
-module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login, orders, paid, cancelOrder) where
+module HttpRequests (fetchGigs, fetchSeats, fetchReservations, submitOrder, startOrder, reserveSeat, freeSeat, finishOrder, finishOrderWithAddress, login, orders, paid, unpaid, cancelOrder) where
 import Model as M
 import Http
 import Date
@@ -153,6 +153,10 @@ get decoder url = requestWithCredentials "" "" "GET" decoder url (Http.empty)
 paid : OrderId -> String -> String -> Task Http.Error String
 paid orderId name password =
   put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/pay") (Http.empty)
+
+unpaid : OrderId -> String -> String -> Task Http.Error String
+unpaid orderId name password =
+  put (Json.Decode.succeed "") (baseApiEndpoint ++ "/orders/" ++ orderId ++ "/unpay") (Http.empty)
 
 
 reserveSeat : OrderId -> SeatId -> Task Http.Error String
