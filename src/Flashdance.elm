@@ -489,6 +489,8 @@ viewOrderDetail address model =
         H.button [HE.onClick address (ClickCancelOrder order), HA.class "btn btn-danger"]
           [ H.text "Bestellung stornieren"
           ]
+      mailTo email =
+        "mailto:" ++ email
       addressList address =
         case address of
           Just a ->
@@ -513,7 +515,11 @@ viewOrderDetail address model =
                   [ H.text "Bestellungsdetail" ]
                 ]
               , H.div [HA.class "panel-body"]
-                [ H.h2 [] [H.text order.name, H.small [] [H.text <| " #" ++ toString order.number]]
+                [ H.h2 [] [ H.text order.name, H.small [] [H.text <| " #" ++ toString order.number ]]
+                , H.p []
+                  [ H.a [HA.href <| mailTo order.email]
+                    [ H.text order.email ]
+                  ]
                 , viewOrderTable' order
                 , paidButton order
                 , cancelButton order
